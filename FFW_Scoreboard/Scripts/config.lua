@@ -11,7 +11,6 @@ C.keyHistoryOlder     = "RIGHT_ARROW" -- while the history is open: show the pre
 C.keyHistoryNewer     = "LEFT_ARROW"  -- while the history is open: show the next (newer) game
 C.keyReset            = "F11"  -- throw away the current numbers without saving (also works in the lobby / saloon)
 C.keyEndSession       = "F10"  -- force-save the current game to history and start a fresh one
-C.keyDiscovery        = "F9"   -- write discovery.txt (lists candidate game functions)
 C.keyScrollUp         = "UP_ARROW"    -- scroll the board up   (only when it is taller than the screen)
 C.keyScrollDown       = "DOWN_ARROW"  -- scroll the board down
 C.scrollStep          = 120           -- how far one key press scrolls
@@ -27,7 +26,6 @@ C.autoFit           = false -- false = the text size never changes (the board sc
 C.columnGap         = 40    -- space between columns
 C.lineHeight        = 1.75  -- row height relative to the font size
 C.panelPadding      = 22    -- margin inside the dark panel
-C.probeJokers       = false -- true = write extra joker / save diagnostics to scoreboard.log (only needed for debugging)
 C.noPollMaps        = { "OpeningCredits", "MainMenu", "Menu", "Intro", "Splash" } -- maps where nothing is read from the game
 C.backgroundOpacity = 0.6   -- 0 = no dark panel behind the table, 1 = solid black (minimal style)
 
@@ -41,7 +39,12 @@ C.borderMarginX = 0.008 -- share of the texture's width used for the left/right 
 C.borderMarginY = 0.10  -- share of the texture's height used for the top/bottom frame
 C.borderOutset = 6     -- pixels the frame sticks out past the table
 
--- Learn mode: logs calls of every candidate function to learn.log. Heavier; only use to find names.
+-- Research tools, for checking the mod after a game update (new enemies, renamed functions). Off by default.
+--   C.debug = true : more detail in scoreboard.log (leaderboard / joker / shield / difficulty fields, weapon and
+--                    save probes) and F9 writes discovery.txt (candidate game functions) and classdump.txt.
+--   C.learn = true : also logs the arguments of every candidate function to learn.log (heavier).
+C.debug = false
+C.keyDiscovery = "F9"
 C.learn = false
 
 -- How to recognise things (Lua patterns matched against class / object names)

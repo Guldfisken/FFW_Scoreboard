@@ -44,7 +44,6 @@ kept. To uninstall, delete the `FFW_Scoreboard` folder.
 | Up / Down | Scroll the board (when it is taller than the screen) |
 | F10 | Save the current game now and start a new one |
 | F11 | Reset the current numbers without saving (handy on the training dummy) |
-| F9 | Write diagnostics (`discovery.txt`, `classdump.txt`) |
 
 All keys can be changed in `Scripts\config.lua`.
 
@@ -79,7 +78,7 @@ The mod only uses information the game sends to **every** player, so the board i
 | `breakdown.csv` | Damage types, enemies, result and difficulty per game |
 | `loadouts.csv` | Loadout and jokers per player per game |
 | `current.csv` | Autosave of the running game |
-| `scoreboard.log` | What the mod found and did (useful for bug reports) |
+| `scoreboard.log` | What the mod found and did (useful for bug reports). A new log starts with every game start; the previous one is kept as `scoreboard.old.log` |
 
 ## Settings (`Scripts\config.lua`)
 
@@ -88,6 +87,13 @@ The mod only uses information the game sends to **every** player, so the board i
 - `C.damageCategories`, `C.alwaysShowTypes`: damage type mapping and which types are always listed.
 - `C.maxEnemyRows`: limit the Enemies table (default: all).
 - `C.jokerRarityColors`, `C.jokersPerRow`, `C.displayNames`: joker colours, wrapping and name overrides.
+
+## After a game update: debug mode
+
+Set `C.debug = true` in `Scripts\config.lua` to check the mod against a new game version (new enemies, renamed
+functions). `scoreboard.log` then gets more detail, and **F9** writes `discovery.txt` (game functions that look
+relevant) and `classdump.txt` (functions and fields of the main classes). `C.learn = true` also logs the arguments
+of those functions to `learn.log`. Turn both off again for normal play.
 
 ## Reporting a problem
 

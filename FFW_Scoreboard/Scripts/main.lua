@@ -1,6 +1,9 @@
--- FFW_Scoreboard v0.1 (UE4SS Lua)
--- Tracks per-player kills, damage, boss damage, elite damage, damage taken and revives,
--- shows them in a toggleable overlay, saves each finished game to history.csv, and lets you browse past games.
+-- FFW_Scoreboard (UE4SS Lua mod for Far Far West)
+-- Tracks per-player damage, kills, healing, deaths, loadout and jokers, shows them in an in-game overlay,
+-- saves each finished game and lets you browse past games. https://github.com/Guldfisken/FFW_Scoreboard
+-- License: GPL-3.0
+
+local VERSION = "1.0.0"
 
 local UEHelpers_ok, UEHelpers = pcall(require, "UEHelpers")
 
@@ -16,13 +19,18 @@ local STATS_SET = { kills = true, damage = true, bossDamage = true, eliteDamage 
 local STATS = { "kills", "damage", "bossDamage", "eliteDamage", "taken", "revives", "deaths", "selfHeal", "teamHeal", "ff", "shield" }
 
 ------------------------------------------------------------------ logging
+-- A fresh scoreboard.log is started each time the game starts; the previous one is kept as scoreboard.old.log.
 local LOGFILE = DIR .. "scoreboard.log"
+pcall(os.remove, DIR .. "scoreboard.old.log")
+pcall(os.rename, LOGFILE, DIR .. "scoreboard.old.log")
 local function log(msg)
   msg = "[FFW_Scoreboard] " .. tostring(msg)
   print(msg .. "\n")
   local f = io.open(LOGFILE, "a")
-  if f then f:write(os.date("%H:%M:%S ") .. msg .. "\n"); f:close() end
+  if f then f:write(os.date("%Y-%m-%d %H:%M:%S ") .. msg .. "\n"); f:close() end
 end
+-- extra detail for finding things after a game update (C.debug = true)
+local function dlog(msg) if C.debug then log(msg) end end
 
 local function safe(fn, ...)
   local ok, a, b, c = pcall(fn, ...)
@@ -398,11 +406,8 @@ end
 local function loadTexture(name)
   if not name or name == "" then return nil end
   local path = "/Game/Interfaces/Textures/" .. name .. "." .. name
+  -- (only textures the game has already loaded are used; forcing a load can crash while a level streams in)
   local o = safe(StaticFindObject, path)
-  if not isValidObj(o) and LoadAsset then
-    pcall(LoadAsset, path)
-    o = safe(StaticFindObject, path)
-  end
   if isValidObj(o) then return o end
   return nil
 end
@@ -1672,7 +1677,7 @@ local function listBoardFields()
   if isValidObj(st) then
     pcall(function() st:ForEachProperty(function(p) boardFields[#boardFields + 1] = p:GetFName():ToString() end) end)
   end
-  log("leaderboard struct fields: " .. table.concat(boardFields, ", "))
+  dlog("leaderboard struct fields: " .. table.concat(boardFields, ", "))
   return boardFields
 end
 
@@ -1724,7 +1729,7 @@ local function pollBoards()
           local parts = {}
           for n, v in pairs(raw) do parts[#parts + 1] = n .. "=" .. tostring(v) end
           table.sort(parts)
-          log("leaderboard of " .. name .. ": " .. table.concat(parts, "  "))
+          dlog("leaderboard of " .. name .. ": " .. table.concat(parts, "  "))
         end
       end
     end
@@ -1915,7 +1920,7 @@ local function readTable(key, path, prefix, wantRarity)
         local raw = unwrap(safe(function() return rd[nameField] end))
         local t = (type(raw) == "string" and raw) or safe(function() return raw:ToString() end)
         if type(t) ~= "string" then t = nil end
-        if namesLogged < 6 then namesLogged = namesLogged + 1; log(key .. " name: " .. rn .. " -> " .. tostring(t)) end
+        if namesLogged < 6 then namesLogged = namesLogged + 1; dlog(key .. " name: " .. rn .. " -> " .. tostring(t)) end
         if t and t ~= "" and t ~= "?" and t ~= internal then names[internal] = t end
       end
       if n <= 2 then
@@ -1924,7 +1929,7 @@ local function readTable(key, path, prefix, wantRarity)
           local d = describeProp(f.prop, safe(function() return rd[f.name] end))
           if d and d ~= "" then parts[#parts + 1] = shortField(f.name) .. "=" .. d end
         end
-        log(key .. " table row " .. rn .. ": " .. table.concat(parts, "  "):sub(1, 1500))
+        dlog(key .. " table row " .. rn .. ": " .. table.concat(parts, "  "):sub(1, 1500))
       end
     end)
   end)
@@ -2270,7 +2275,7 @@ pollDifficulty = function()
     -- nothing called "difficulty": write the game state's / game instance's simple values to the log once, to find it
     if isValidObj(objs[1][2]) then
       difficultyMap = Session.map
-      for _, o in ipairs(objs) do
+      for _, o in ipairs(C.debug and objs or {}) do
         local obj = o[2]
         if isValidObj(obj) then
           local names = {}
@@ -2288,7 +2293,7 @@ pollDifficulty = function()
             cur = safe(function() return cur:GetSuperStruct() end)
             depth = depth + 1
           end
-          log("no difficulty property found; " .. o[1] .. " values on " .. tostring(Session.map) .. ": " .. table.concat(names, "  "):sub(1, 6000))
+          dlog("no difficulty property found; " .. o[1] .. " values on " .. tostring(Session.map) .. ": " .. table.concat(names, "  "):sub(1, 6000))
         end
       end
     end
@@ -2297,7 +2302,7 @@ pollDifficulty = function()
   difficultyMap = Session.map
   local parts = {}
   for _, c in ipairs(cands) do parts[#parts + 1] = c.label .. "=" .. tostring(c.value) end
-  log("difficulty candidates on " .. tostring(Session.map) .. ": " .. table.concat(parts, "  "))
+  dlog("difficulty candidates on " .. tostring(Session.map) .. ": " .. table.concat(parts, "  "))
   for _, c in ipairs(cands) do
     local v = c.value
     if v and v ~= "" and not v:find("^{") and not v:find("^%[") then
@@ -2337,8 +2342,8 @@ pollShield = function()
       local n = f:GetFName():ToString()
       if not n:find("^ExecuteUbergraph") then fns[#fns + 1] = n end
     end) end)
-    log("shield component properties: " .. table.concat(props, ", "))
-    log("shield component functions: " .. table.concat(fns, ", "))
+    dlog("shield component properties: " .. table.concat(props, ", "))
+    dlog("shield component functions: " .. table.concat(fns, ", "))
     -- prefer a "current" value, else the first candidate
     shieldProp = false
     for _, n in ipairs(cands) do if n:lower():find("current") then shieldProp = n end end
@@ -2419,7 +2424,8 @@ bind(C.keyEndSession, function()
   newSession(map)
   if not hadData then log("nothing to save (no stats recorded this game)") end
 end)
-bind(C.keyDiscovery, function() writeDiscovery(); classDump() end)
+-- research tools (C.debug = true): function list + class dump, used to find the right game functions after an update
+if C.debug then bind(C.keyDiscovery or "F9", function() writeDiscovery(); classDump() end) end
 
 -- hooks: retry until the game's Blueprints are loaded
 local hooksDone = false
@@ -2431,7 +2437,7 @@ LoopAsync(2000, function()
     ExecuteInGameThread(function()
       if hooksDone then return end
       hooksDone = installHooks()
-      if hooksDone and C.dumpClassesOnStart then pcall(classDump) end
+      if hooksDone and C.debug and C.dumpClassesOnStart then pcall(classDump) end
     end)
   end
   return false
@@ -2480,7 +2486,7 @@ LoopAsync(1000, function()
       if tick % 3 == 0 and canPoll then
         pcall(pollBoards)
         pcall(pollLoadouts)
-        if C.probeJokers ~= false and tick % 15 == 0 then pcall(pollJokers) end
+        if C.debug and tick % 15 == 0 then pcall(pollJokers) end
         if tick % 15 == 0 then pcall(pollDifficulty) end
         pcall(MergeBoards)
       end
@@ -2497,4 +2503,4 @@ LoopAsync(1000, function()
   return false
 end)
 
-log("v0.1 loaded. F6 scoreboard, F8 history, F9 discovery, F10 save+reset game.")
+log(string.format("FFW_Scoreboard %s loaded%s. F6 scoreboard, F8 saved games, F10 save + new game.", VERSION, C.debug and " (debug mode: F9 = discovery)" or ""))
