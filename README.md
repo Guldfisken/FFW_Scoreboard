@@ -31,8 +31,9 @@ It works the same whether you host or join, and the other players do **not** nee
    It must contain `enabled.txt` and the `Scripts` folder.
 3. Start the game and press **F6** during a mission.
 
-To update, replace `Scripts\main.lua` (and `Scripts\config.lua` if you have not changed it). Your saved games are
-kept. To uninstall, delete the `FFW_Scoreboard` folder.
+To update, replace `Scripts\main.lua`. You can keep your own `Scripts\config.lua`: it only holds your settings,
+and anything missing from it uses the built-in default. Your saved games are kept. To uninstall, delete the
+`FFW_Scoreboard` folder.
 
 ## Keys
 
@@ -82,16 +83,29 @@ The mod only uses information the game sends to **every** player, so the board i
 
 ## Settings (`Scripts\config.lua`)
 
+`config.lua` only contains settings; delete a line to go back to the default.
+
 - Keys, text size (`C.fontSize`), spacing (`C.columnGap`, `C.panelPadding`), space below the board (`C.bottomMargin`).
-- `C.enemyTypes`, `C.bossPatterns`, `C.elitePatterns`: how enemy classes are named and grouped.
-- `C.damageCategories`, `C.alwaysShowTypes`: damage type mapping and which types are always listed.
-- `C.maxEnemyRows`: limit the Enemies table (default: all).
-- `C.jokerRarityColors`, `C.jokersPerRow`, `C.displayNames`: joker colours, wrapping and name overrides.
+- `C.alwaysShowTypes`, `C.maxEnemyRows`, `C.jokersPerRow`: what the tables show.
+- `C.displayNames`, `C.difficultyNames`, `C.jokerRarityColors`: names and colours.
 
-## After a game update: debug mode
+The mod's knowledge of the game (which functions it hooks, enemy and damage type names) lives in `main.lua`, so it
+is updated together with the mod.
 
-Set `C.debug = true` in `Scripts\config.lua` to check the mod against a new game version (new enemies, renamed
-functions). `scoreboard.log` then gets more detail, and **F9** writes `discovery.txt` (game functions that look
+## After a game update
+
+**New enemies** show up as "Other", and `scoreboard.log` names their class (`enemy class counted as 'Other': ...`).
+You can name them yourself without waiting for a mod update:
+
+```lua
+C.extraEnemyTypes = { { "Scarecrow", "Scarecrow" } }   -- { name on the board, part of the class name }
+C.extraBossPatterns = { "Scarecrow_Boss" }             -- also count it as boss damage
+```
+
+`C.extraElitePatterns` and `C.extraDamageCategories` work the same way.
+
+**Debug mode.** Set `C.debug = true` to check the mod against a new game version (renamed functions and the
+like). `scoreboard.log` then gets more detail, and **F9** writes `discovery.txt` (game functions that look
 relevant) and `classdump.txt` (functions and fields of the main classes). `C.learn = true` also logs the arguments
 of those functions to `learn.log`. Turn both off again for normal play.
 

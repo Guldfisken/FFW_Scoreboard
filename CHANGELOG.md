@@ -11,3 +11,6 @@ First public release.
 - Fixed text size with scrolling.
 - Removed the F7 texture gallery (a development tool).
 - Victory / Defeat uses the game's own answer (lost games could be saved as Victory before).
+- config.lua holds only player settings; the game knowledge lives in main.lua, so a kept config.lua never blocks fixes.
+- New enemies, bosses and damage types can be named in config.lua (C.extraEnemyTypes ...).
+- Research tools (F9 discovery, extra logging) are off unless C.debug = true.
