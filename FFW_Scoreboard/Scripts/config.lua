@@ -9,7 +9,6 @@ C.keyToggleScoreboard = "F6"   -- show / hide the live scoreboard
 C.keyHistory          = "F8"   -- open / close the list of saved past games (works in lobby / saloon too)
 C.keyHistoryOlder     = "RIGHT_ARROW" -- while the history is open: show the previous (older) game
 C.keyHistoryNewer     = "LEFT_ARROW"  -- while the history is open: show the next (newer) game
-C.keyGallery          = "F7"   -- show / hide a sheet of the game's UI textures (to pick graphics for the overlay)
 C.keyReset            = "F11"  -- throw away the current numbers without saving (also works in the lobby / saloon)
 C.keyEndSession       = "F10"  -- force-save the current game to history and start a fresh one
 C.keyDiscovery        = "F9"   -- write discovery.txt (lists candidate game functions)
@@ -41,16 +40,6 @@ C.borderTint   = nil   -- {r,g,b,a} 0..1 to recolour the border texture; nil = t
 C.borderMarginX = 0.008 -- share of the texture's width used for the left/right frame (the texture is very wide, so keep this small)
 C.borderMarginY = 0.10  -- share of the texture's height used for the top/bottom frame
 C.borderOutset = 6     -- pixels the frame sticks out past the table
-C.galleryTextures = {
-  "T_Button_Small", "T_Button_Small_Normal", "T_Button_Small_White",
-  "T_Button_Large_A", "T_Button_Large_A_Outline", "T_Button_Large_A_White",
-  "T_Button_Large_B", "T_Button_Large_C", "T_Button_Large_White", "T_Button_Large_WhiteSolid",
-  "T_Holder_Large", "T_Holder_Large_White", "T_Holder_Long", "T_Holder_Long_White",
-  "T_Holder_Square", "T_Holder_VeryLarge", "T_Holder_VeryLarge_Edges", "T_Holder_VeryLarge_White",
-  "T_NotifBackground", "T_ContractBackground", "T_WeaponInfosHolder", "T_UI_ItemInfos",
-  "T_Deco_A", "T_Deco_A_Thin", "T_Deco_B", "T_Deco_Background", "T_Strips", "T_StripsThin",
-  "T_JokerBackground", "T_JokerBackgroundHorizontal", "T_SpellBackground", "T_BorderThin_A",
-}
 
 -- Items whose physical damage is NOT a shot (melee weapons, abilities). Used for "Missed". Names as in the
 -- "damage by item for ..." lines of scoreboard.log (without the "item" prefix). Case-sensitive.

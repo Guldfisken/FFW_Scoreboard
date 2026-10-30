@@ -9,3 +9,4 @@ First public release.
 - Loadout with hero jokers, weapons, utility, spells and picked-up jokers, coloured by rarity.
 - Map, difficulty, length and Victory / Defeat saved with each game.
 - Fixed text size with scrolling.
+- Removed the F7 texture gallery (a development tool).

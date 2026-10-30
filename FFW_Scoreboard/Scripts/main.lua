@@ -1128,81 +1128,6 @@ local function stepHistory(dir)
   render(historyView())
 end
 
------------------------------------------------------------------- texture gallery (F7) - helps choosing game graphics
-local Gallery = { widget = nil, visible = false }
-
-local function buildGallery()
-  local ok, err = pcall(function()
-    local gi = UEHelpers_ok and UEHelpers.GetGameInstance() or nil
-    if not isValidObj(gi) then error("no game instance") end
-    local w = StaticConstructObject(StaticFindObject("/Script/UMG.UserWidget"), gi, FName("FFWGalleryWidget"))
-    w.WidgetTree = StaticConstructObject(StaticFindObject("/Script/UMG.WidgetTree"), w, FName("FFWGalleryTree"))
-    local canvas = StaticConstructObject(StaticFindObject("/Script/UMG.CanvasPanel"), w.WidgetTree, FName("FFWGalleryCanvas"))
-    w.WidgetTree.RootWidget = canvas
-    local ImageClass, TextBlock = StaticFindObject("/Script/UMG.Image"), StaticFindObject("/Script/UMG.TextBlock")
-    local list = C.galleryTextures or {}
-    local cols, cw, ch = 6, 300, 150
-    local function img(name, x, y, wd, ht, color)
-      local im = StaticConstructObject(ImageClass, w.WidgetTree, FName(name))
-      local slot = canvas:AddChildToCanvas(im)
-      slot:SetAutoSize(false); slot:SetPosition({ X = x, Y = y }); slot:SetSize({ X = wd, Y = ht })
-      setImageColor(im, color)
-      return im
-    end
-    img("FFWG_Bg", 20, 20, cols * cw + 20, math.ceil(#list / cols) * ch + 60, { 0.1, 0.1, 0.1, 0.92 })
-    local found = 0
-    for i, name in ipairs(list) do
-      local x, y = 40 + ((i - 1) % cols) * cw, 40 + math.floor((i - 1) / cols) * ch
-      local tex = loadTexture(name)
-      local label = name
-      if tex then
-        local im = img("FFWG_Img" .. i, x, y, cw - 40, ch - 50, { 1, 1, 1, 1 })
-        if pcall(function() im:SetBrushFromTexture(tex, false) end) then found = found + 1 else label = name .. " (cannot draw)" end
-      else
-        label = name .. " (not loaded)"
-      end
-      local t = StaticConstructObject(TextBlock, w.WidgetTree, FName("FFWG_Lbl" .. i))
-      local slot = canvas:AddChildToCanvas(t)
-      slot:SetAutoSize(true); slot:SetPosition({ X = x, Y = y + ch - 46 })
-      setColor(t, { 1, 1, 1, 1 })
-      applyFont(t, 18, false)
-      safe(function() t:SetText(FText(label)) end)
-    end
-    log(string.format("texture gallery: %d of %d textures could be drawn", found, #list))
-    w:AddToViewport(210)
-    w:SetVisibility(1)
-    Gallery.widget = w
-  end)
-  if not ok then log("gallery could not be created: " .. tostring(err)); Gallery.widget = nil end
-  return Gallery.widget ~= nil
-end
-
-local function destroyGallery()
-  local w = Gallery.widget
-  Gallery.widget = nil
-  Gallery.visible = false
-  if w and isValidObj(w) then
-    pcall(function() w:SetVisibility(1) end)
-    pcall(function() w:RemoveFromParent() end)
-  end
-end
-
-local function toggleGallery()
-  if uiBlocked and uiBlocked() then return end
-  if Gallery.visible and Gallery.widget and isValidObj(Gallery.widget) then
-    safe(function() Gallery.widget:SetVisibility(1) end)
-    Gallery.visible = false
-    return
-  end
-  if not (Gallery.widget and isValidObj(Gallery.widget)) then
-    Gallery.widget = nil
-    loadFonts()
-    if not buildGallery() then return end
-  end
-  safe(function() Gallery.widget:SetVisibility(3) end)
-  Gallery.visible = true
-end
-
 ------------------------------------------------------------------ session lifecycle
 local function currentMapName()
   local w = UEHelpers_ok and safe(UEHelpers.GetWorld) or nil
@@ -1265,7 +1190,6 @@ local function checkMapChange()
   if leaving then
     UIBlockedUntil = math.max(UIBlockedUntil, os.time() + 8)
     if UI.widget then pcall(destroyUI) end
-    if Gallery.widget then pcall(destroyGallery) end
   end
   if map == "?" then return end
   if not Session then
@@ -2730,7 +2654,6 @@ bind(C.keyEndSession, function()
   newSession(map)
   if not hadData then log("nothing to save (no stats recorded this game)") end
 end)
-bind(C.keyGallery or "F7", toggleGallery)
 bind(C.keyDiscovery, function() writeDiscovery(); classDump() end)
 
 -- hooks: retry until the game's Blueprints are loaded

@@ -45,7 +45,6 @@ kept. To uninstall, delete the `FFW_Scoreboard` folder.
 | F10 | Save the current game now and start a new one |
 | F11 | Reset the current numbers without saving (handy on the training dummy) |
 | F9 | Write diagnostics (`discovery.txt`, `classdump.txt`) |
-| F7 | Texture gallery (for styling the overlay) |
 
 All keys can be changed in `Scripts\config.lua`.
 
