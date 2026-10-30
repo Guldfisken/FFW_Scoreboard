@@ -107,16 +107,27 @@ local function playerName(o)
   return name
 end
 
+-- Look-ups shared within one tick of the main loop (one search per second instead of one per caller).
+local Cache = { tick = 0, states = nil, statesTick = -1, me = nil, meTick = -1 }
+local function playerStates()
+  if Cache.statesTick ~= Cache.tick then
+    Cache.states, Cache.statesTick = safe(FindAllOf, "BP_PlayerState_C"), Cache.tick
+  end
+  return Cache.states
+end
+
 local function localPlayer()
+  if Cache.meTick == Cache.tick and (Cache.me == false or isValidObj(Cache.me)) then return Cache.me or nil end
+  local found = false
   local list = safe(FindAllOf, "BP_Player_C")
-  if not list then return nil end
-  for _, p in ipairs(list) do
+  for _, p in ipairs(list or {}) do
     if isValidObj(p) then
       local lc = safe(function() return p:IsLocallyControlled() end)
-      if lc == true then return p end
+      if lc == true then found = p; break end
     end
   end
-  return nil
+  Cache.me, Cache.meTick = found, Cache.tick
+  return found or nil
 end
 
 ------------------------------------------------------------------ session / stats model
@@ -1625,11 +1636,34 @@ local function installHooks()
           if lower:find(pat, 1, true) then
             if #cand < 40 then
               cand[#cand + 1] = sn
+              -- A question such as F_IsGameVictory(out Victory) is called at the end of every mission, won or lost:
+              -- its answer decides (hooks on game functions run after the function, so the out value is set).
+              -- Other matches only count by their name, and only while no answer has been seen.
+              local isQuestion = sn:find("^F_Is") ~= nil or sn:find("^Is") ~= nil
               hookPath(path, function(self, ...)
+                local args = { ... }
                 pcall(function()
+                  if not Session or isLobby(Session.map) then return end
+                  local answer
+                  if isQuestion then
+                    for i = 1, #args do
+                      local v = unwrap(args[i])
+                      if type(v) == "boolean" then answer = v; break end
+                    end
+                  end
+                  local res
+                  if answer ~= nil then
+                    res = (answer == (kind == "Victory")) and "Victory" or "Defeat"
+                    Session.resultSure = true
+                  elseif not Session.resultSure then
+                    res = kind
+                  end
                   resultSeen = resultSeen + 1
-                  if resultSeen <= 12 then log("result event: " .. path) end
-                  if Session and not isLobby(Session.map) then Session.result = kind end
+                  if resultSeen <= 12 or (res and res ~= Session.result) then
+                    log(string.format("result event: %s%s -> %s", sn, answer ~= nil and (" = " .. tostring(answer)) or "",
+                      tostring(res or Session.result)))
+                  end
+                  if res then Session.result = res end
                 end)
               end)
             end
@@ -1713,7 +1747,7 @@ end
 
 local function pollBoards()
   if not Session then return end
-  local list = safe(FindAllOf, "BP_PlayerState_C")
+  local list = playerStates()
   if not list then return end
   for _, ps in ipairs(list) do
     if isValidObj(ps) then
@@ -2010,7 +2044,7 @@ local loadoutLast = {}
 pollLoadouts = function()
   if not Session then return end
   pcall(loadJokerRarity)
-  local list = safe(FindAllOf, "BP_PlayerState_C")
+  local list = playerStates()
   if not list then return end
   for _, ps in ipairs(list) do
     if isValidObj(ps) then
@@ -2188,7 +2222,7 @@ pollJokers = function()
   if not Session then return end
   pcall(probeWeapons)
   pcall(probeSaves)
-  local list = safe(FindAllOf, "BP_PlayerState_C")
+  local list = playerStates()
   if not list then return end
   for _, ps in ipairs(list) do
     if isValidObj(ps) then
@@ -2353,7 +2387,7 @@ pollShield = function()
   end
   if not shieldProp then return end
   if shieldSession ~= Session.id then shieldSession = Session.id; shieldLast = {} end
-  local list = safe(FindAllOf, "BP_PlayerState_C")
+  local list = playerStates()
   if not list then return end
   for _, ps in ipairs(list) do
     if isValidObj(ps) then
@@ -2466,6 +2500,7 @@ end
 local tick = 0
 LoopAsync(1000, function()
   tick = tick + 1
+  Cache.tick = tick
   ExecuteInGameThread(function()
     local ok, err = pcall(function()
       checkMapChange()

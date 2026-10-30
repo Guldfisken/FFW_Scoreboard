@@ -10,3 +10,4 @@ First public release.
 - Map, difficulty, length and Victory / Defeat saved with each game.
 - Fixed text size with scrolling.
 - Removed the F7 texture gallery (a development tool).
+- Victory / Defeat uses the game's own answer (lost games could be saved as Victory before).
