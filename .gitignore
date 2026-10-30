@@ -1,0 +1,13 @@
+# files the mod writes while running
+FFW_Scoreboard/Scripts/*.csv
+FFW_Scoreboard/Scripts/*.log
+FFW_Scoreboard/Scripts/*.txt
+
+# release zips
+*.zip
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
