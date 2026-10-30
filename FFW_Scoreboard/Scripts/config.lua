@@ -41,14 +41,6 @@ C.borderMarginX = 0.008 -- share of the texture's width used for the left/right 
 C.borderMarginY = 0.10  -- share of the texture's height used for the top/bottom frame
 C.borderOutset = 6     -- pixels the frame sticks out past the table
 
--- Items whose physical damage is NOT a shot (melee weapons, abilities). Used for "Missed". Names as in the
--- "damage by item for ..." lines of scoreboard.log (without the "item" prefix). Case-sensitive.
-C.nonShotItems = { "Knuckles", "Melee", "Machete", "Sword", "Axe", "Katana", "Fist", "Bat", "Hammer", "Shovel",
-  "Hero", "SheriffStar", "Mount", "Explosion", "Lasso", "Whip", "Boomerang", "Dynamite", "Grenade", "Cactus", "Turret" }
-
--- Use the server's damage feed (damage of all players). Set to false to go back to counting only your own damage.
-C.useDamageFeed = true
-
 -- Learn mode: logs calls of every candidate function to learn.log. Heavier; only use to find names.
 C.learn = false
 
@@ -115,10 +107,6 @@ C.enemyTypes = {
   { "Ghost", "Ghost" }, { "Goblin", "Goblin" }, { "Chicken", "Chicken" }, { "Cactus", "Cactus" },
 }
 
--- Shots fired = player bullet actors that appear in the world. Weakspot rate = gun hits whose "critical" flag is set
--- (p4 of F_ShowDamagesAmount) / gun hits. Missed = shots that did not hit. Both need a real mission to verify.
-C.shotClasses = {}   -- (bullet-actor counting did not work; shots now come from F_LeaderboardStats_AddShot)
-
 -- Maps in which no game is recorded (lobby / saloon / hub)
 C.lobbyMapPatterns = { "Lobby", "Transition", "Hub", "MainMenu", "Menu" } -- map names seen: L_Lobby, L_TransitionMap, L_Map_FarWest, L_Map_Area41
 
@@ -128,7 +116,6 @@ C.lobbyMapPatterns = { "Lobby", "Transition", "Hub", "MainMenu", "Menu" } -- map
 C.events = {
   -- Damage feed sent by the server to ALL players: self = enemy, p1 = amount, p2 = owner (player), p3 = damage type,
   -- p4 = item name, p5 = element. Gives the damage of every player, also when you joined someone else's game.
-  -- When it fires, the "damage" / "dmgType" events below are switched off automatically.   [seen in learn.log]
   -- Also hooked in enemy classes that override it (e.g. the Cryptic Train), and F_Child_DamageFeedback
   -- (self = enemy, p2 = owner, p3 = amount) used by multi-part enemies such as the Train's wagons. Duplicates are removed.
   feed = {
@@ -143,26 +130,12 @@ C.events = {
     owner  = "/Game/Enemies/Assets/Cryptic/CrypticTrain/",
     amount = "none",
   },
-  -- (fallback) self = the enemy that was hit; p2 = amount; p3 = the attacking player.             [VERIFIED in learn.log]
-  damage = {
-    names  = { "F_ShowDamagesAmount" },
-    owner  = "BP_Enemy_C:",
-    amount = "number",
-  },
   -- Counted once per dead enemy (duplicates from the hooks below are removed).
   -- F_IncrementLeaderboardKillStats: self = dead enemy, p1 = killer.                              [VERIFIED]
   -- F_TriggerOnKillTweaks(_Client): self = killer's PlayerState, p1 = dead enemy.                  [VERIFIED]
   kill = {
     names  = { "F_IncrementLeaderboardKillStats", "F_TriggerOnKillTweaks", "F_TriggerOnKillTweaks_Client" },
     amount = "one",
-  },
-  -- Damage type of a hit (Bullets, Melee, Buff_Fire ...). Matched to the damage amount above per enemy.
-  --   BP_Enemy:F_ServerDamages(self = enemy, p1 = amount, p2 = damage type class, p3 = causer)       [VERIFIED]
-  --   BP_PlayerState:F_ClientDamagesServer(p1 = target, p2 = amount, p3 = player, p4 = damage type)  [VERIFIED]
-  dmgType = {
-    names  = { "F_ServerDamages", "F_ClientDamagesServer" },
-    owner  = { "/Game/Enemies/BP_Enemy%.BP_Enemy_C:", "/Game/Player/BP_PlayerState%.BP_PlayerState_C:" },
-    amount = "none",
   },
   -- self = PlayerState of the player that died (the game's own leaderboard counter).                [GUESS - same style as revive]
   death = {

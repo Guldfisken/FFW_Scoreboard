@@ -11,11 +11,9 @@ if not CFG_OK then
   return
 end
 
-local hitPathStats   -- hit marker tally per source function (diagnostics), set up below
 local feedTally      -- damage feed tally per function + enemy class (diagnostics), set up below
 local STATS_SET = { kills = true, damage = true, bossDamage = true, eliteDamage = true, taken = true, revives = true, deaths = true, selfHeal = true, teamHeal = true }
-local STATS = { "kills", "damage", "bossDamage", "eliteDamage", "taken", "revives", "deaths", "shots", "hits", "whits", "crits", "selfHeal", "teamHeal", "ff", "shield" }
-local HEADERS = { "Player", "Kills", "Damage", "Boss dmg", "Elite dmg", "Taken", "Revives" }
+local STATS = { "kills", "damage", "bossDamage", "eliteDamage", "taken", "revives", "deaths", "selfHeal", "teamHeal", "ff", "shield" }
 
 ------------------------------------------------------------------ logging
 local LOGFILE = DIR .. "scoreboard.log"
@@ -194,7 +192,7 @@ local function appendBreakdown(sess)
   if sess.difficulty then lines[#lines + 1] = table.concat({ sess.id, "_game", "difficulty", sanitize(sess.difficulty), "1" }, ",") end
   for _, name in ipairs(sess.order) do
     local s = sess.players[name]
-    local misc = { deaths = s.deaths, shots = s.shots, hits = s.hits, whits = s.whits, ff = s.ff, shield = s.shield, crits = s.crits, selfHeal = s.selfHeal, teamHeal = s.teamHeal }
+    local misc = { deaths = s.deaths, ff = s.ff, shield = s.shield, selfHeal = s.selfHeal, teamHeal = s.teamHeal }
     for kind, tbl in pairs({ cat = s.cat, ek = s.ek, ed = s.ed, wd = s.wd or {}, misc = misc }) do
       for label, v in pairs(tbl) do
         lines[#lines + 1] = table.concat({ sess.id, sanitize(name), kind, sanitize(label), string.format("%.0f", v) }, ",")
@@ -773,7 +771,7 @@ local function fmtDuration(sec)
   return string.format("%dm %02ds", m, s)
 end
 
--- A dataset is { order = {names}, stats = { [name] = {kills, damage, bossDamage, eliteDamage, taken, revives, deaths, shots, hits, crits, cat, ek, ed} } }
+-- A dataset is { order = {names}, stats = { [name] = {kills, damage, bossDamage, eliteDamage, taken, revives, deaths, selfHeal, teamHeal, ff, shield, cat, ek, ed} } }
 local function datasetOfSession(sess)
   local ds = { order = {}, stats = {}, loadouts = sess and sess.loadouts or {} }
   if sess then
@@ -798,24 +796,13 @@ local function datasetOfGame(g)
     ds.order[#ds.order + 1] = r[1]
     ds.stats[r[1]] = { kills = tonumber(r[2]), damage = tonumber(r[3]), bossDamage = tonumber(r[4]),
       eliteDamage = tonumber(r[5]), taken = tonumber(r[6]), revives = tonumber(r[7]),
-      deaths = pb.misc.deaths or 0, shots = pb.misc.shots or 0, hits = pb.misc.hits or 0, crits = pb.misc.crits or 0,
-      selfHeal = pb.misc.selfHeal or 0, teamHeal = pb.misc.teamHeal or 0, whits = pb.misc.whits, ff = pb.misc.ff or 0, shield = pb.misc.shield or 0,
+      deaths = pb.misc.deaths or 0, selfHeal = pb.misc.selfHeal or 0, teamHeal = pb.misc.teamHeal or 0,
+      ff = pb.misc.ff or 0, shield = pb.misc.shield or 0,
       cat = normalizeLabels(pb.cat), ek = normalizeLabels(pb.ek), ed = normalizeLabels(pb.ed) }
   end
   return ds
 end
 
-local function rateOf(s)
-  local hits, shots, crits = s.hits or 0, s.shots or 0, s.crits or 0
-  -- weakspot base: bullet hits seen with a critical flag (older saved games: all hits)
-  local base = s.whits or hits
-  local weak = base > 0 and (100 * math.min(crits, base) / base) or nil
-  local miss = (shots > 0 and hits > 0) and (100 * math.max(0, shots - hits) / shots) or nil
-  return weak, miss
-end
-local function pct(v) return v and string.format("%.0f%%", v) or "-" end
-
--- mark the best value(s) of a column: higher = better, or lower = better
 local function markBest(rows, col, values, higher)
   local best, worst = nil, nil
   local count = 0
@@ -1146,14 +1133,7 @@ end
 
 -- (an experimental hook on the engine's travel functions was removed: hooking engine natives is risky during level loads)
 
-local FlushPending
-hitPathStats = {}
 local function endSession(reason)
-  if FlushPending then FlushPending(true) end
-  for p, s in pairs(hitPathStats) do
-    log(string.format("hit marker tally %s: total=%d critical=%d receive=%d", tostring(p), s.n, s.crit, s.recv))
-  end
-  hitPathStats = {}
   if feedTally then
     for k, v in pairs(feedTally) do log(string.format("damage feed tally %s: %.0f", k, v)) end
     for k in pairs(feedTally) do feedTally[k] = nil end
@@ -1268,65 +1248,16 @@ local function enemyLabel(enemy)
 end
 local function categoryOf(typeObj) return firstLabel(C.damageCategories, fullName(typeObj), "Other") end
 
--- Damage type tracking. The damage type of a hit arrives in a separate call from the damage amount, so the
--- type is remembered per enemy for a moment; amounts that arrive first wait in `pending`.
 local loggedTypes = {}
-local typeStash = {}   -- enemyKey -> { cat, t }
-local pending = {}     -- { player, key, amount, t }
-local PEND_SECONDS = 2
-
-FlushPending = nil -- assigned below
 local function addMisc(name, field, n)
   if not Session then newSession("?") end
   local s = statsFor(name)
   s[field] = (s[field] or 0) + n
 end
 
--- a damage event whose type is now known: category damage, and (for gun hits) hit / weakspot counters
-local function applyDamage(p, cat)
-  recordCat(p.player, cat, p.amount)
-end
-
-local function sameAmount(a, b)
-  if not a or not b then return false end
-  return math.abs(a - b) <= math.max(0.02, 0.01 * math.max(math.abs(a), math.abs(b)))
-end
-
--- Each type event labels exactly ONE damage event (matched by enemy + amount, otherwise the oldest one waiting).
--- Damage that never gets a type is gun / melee damage ("Weapon"): the other types always announce themselves.
-local function takeEntry(list, amount)
-  if not list or #list == 0 then return nil end
-  for i, e in ipairs(list) do
-    if sameAmount(e.amount, amount) then return table.remove(list, i) end
-  end
-  return table.remove(list, 1)
-end
-
-local function resolvePending(key, cat, amount)
-  local mine, keep = {}, {}
-  for _, p in ipairs(pending) do
-    if p.key == key then mine[#mine + 1] = p else keep[#keep + 1] = p end
-  end
-  local p = takeEntry(mine, amount)
-  for _, q in ipairs(mine) do keep[#keep + 1] = q end
-  pending = keep
-  if p then applyDamage(p, cat) return true end
-  return false
-end
-
-local function flushPending(force)
-  local now, keep = os.time(), {}
-  for _, p in ipairs(pending) do
-    if force or now - p.t > PEND_SECONDS then applyDamage(p, "Weapon") else keep[#keep + 1] = p end
-  end
-  pending = keep
-end
-
-FlushPending = flushPending
-
 -- Damage feed: BP_Enemy:F_DamageFeedback_Multicast(Damages, Owner, DamageType, ItemName, Element) is sent by the
 -- server to EVERY player, so it carries the damage of all players (the same idea the Darktide scoreboard uses with
--- AttackReportManager.add_attack_result). Once it has been seen, the older local-only damage path is switched off.
+-- AttackReportManager.add_attack_result).
 local feedActive = false
 local feedNoPlayerLogged = {}
 local feedRecent, feedRecentN = {}, 0
@@ -1356,7 +1287,6 @@ local function argText(v)
 end
 
 handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
-  if C.useDamageFeed == false then return end
   local enemy = selfObj
   if not isValidObj(enemy) or not args then return end
   -- argument positions:
@@ -1397,7 +1327,6 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
   if feedRecentN > 4000 then feedRecent, feedRecentN = {}, 0 end
   if not feedActive then
     feedActive = true
-    pending, typeStash = {}, {}
     log("damage source: F_DamageFeedback_Multicast (damage of all players)")
   end
   record(who, "damage", amount)
@@ -1439,8 +1368,6 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
     local s = statsFor(who)
     s.wd = s.wd or {}
     s.wd[item] = (s.wd[item] or 0) + amount
-    -- a gun hit (for "Missed"): physical damage from an item that is not melee / an ability
-    if cat == "Weapon" and not matchesAny(item, C.nonShotItems or {}) then addMisc(who, "hits", 1) end
   end
 end
 
@@ -1454,95 +1381,6 @@ handlers.difficulty = function(def, selfObj, nums)
   if Session.difficulty ~= name then
     Session.difficulty = name
     log(string.format("difficulty: %s (value %s via F_ScaleXpWithDifficulty)", name, tostring(v)))
-  end
-end
-
--- Weakspot: BP_Enemy:F_DamageFeedback(Hit, Owner, Damages, DamageType, Critical, Element, ItemName). Only bullet hits count.
-handlers.weak = function(def, selfObj, nums, objs, bools, path, args)
-  local players, others = findActors(selfObj, objs)
-  local who = players[1]
-  if not who then return end
-  local isBullet = false
-  for _, o in ipairs(others) do
-    if fullName(o):find("DamageType_Bullets", 1, true) then isBullet = true end
-  end
-  if not isBullet then return end
-  local name = playerName(who)
-  addMisc(name, "whits", 1)
-  if bools and bools[1] == true then addMisc(name, "crits", 1) end
-end
-
--- Shots: the server tells everybody when a player's bullet / arrow is spawned (F_SpawnPlayerBullet_Multicast etc.)
-local shotSeen = {}
-handlers.shotmc = function(def, selfObj, nums, objs, bools, path)
-  local who
-  for _, o in ipairs(objs) do if isPlayer(o) then who = o; break end end   -- NewOwner
-  if not who and isPlayer(selfObj) then who = selfObj end
-  if not who then return end
-  local name = playerName(who)
-  if not shotSeen[name] then shotSeen[name] = true; log("shots of " .. name .. " seen via " .. tostring(path):match("([^:]+)$")) end
-  addMisc(name, "shots", 1)
-end
-
-local typeEventLog = {}
-handlers.dmgType = function(def, selfObj, nums, objs, bools, path)
-  if feedActive then return end   -- the damage feed decides the type (same for everyone, host or not)
-  local _, others = findActors(selfObj, objs)
-  local enemy, dtype
-  for _, o in ipairs(others) do
-    if not enemy and className(o):find("^BP_Enemy") then enemy = o end
-    if not dtype and fullName(o):find("DamageType", 1, true) then dtype = o end
-  end
-  if not enemy or not dtype then return end
-  local key, cat = fullName(enemy), categoryOf(dtype)
-  do
-    local tn = (fullName(dtype):match("([^%.:]+)$") or "?")
-    if not loggedTypes[tn] then loggedTypes[tn] = true; log("damage type seen: " .. tn .. " -> " .. cat) end
-  end
-  local amount = nums[1]
-  -- diagnostics: the first few events of every non-gun type, with amount and who caused it
-  if cat ~= "Weapon" then
-    typeEventLog[cat] = (typeEventLog[cat] or 0) + 1
-    if typeEventLog[cat] <= 8 then
-      local causers = {}
-      for _, o in ipairs(others) do if o ~= enemy and o ~= dtype then causers[#causers + 1] = className(o) end end
-      for _, pl in ipairs(findActors(selfObj, objs)) do causers[#causers + 1] = "player:" .. playerName(pl) end
-      log(string.format("type event %s: amount=%s enemy=%s via %s causers=%s", cat, tostring(amount), className(enemy),
-        tostring((path or ""):match(":([^:]+)$")), table.concat(causers, ",")))
-    end
-  end
-  if resolvePending(key, cat, amount) then return end        -- the damage was already waiting for its type
-  local list = typeStash[key]
-  if not list then list = {}; typeStash[key] = list end
-  list[#list + 1] = { cat = cat, amount = amount, t = os.time() }
-  while #list > 12 do table.remove(list, 1) end
-end
-
-handlers.damage = function(def, selfObj, nums, objs, bools)
-  if feedActive then return end
-  local amount = pickAmount(def, nums)
-  if not amount then return end
-  local players, others = findActors(selfObj, objs)
-  local attacker = players[1] or localPlayer()
-  if not attacker then return end
-  local target = others[1]
-  local who = playerName(attacker)
-  record(who, "damage", amount)
-  local kind = classifyTarget(target)
-  if kind == "boss" then record(who, "bossDamage", amount)
-  elseif kind == "elite" then record(who, "eliteDamage", amount) end
-  if target then
-    recordEnemy(who, enemyLabel(target), 0, amount)
-    local key = fullName(target)
-    local p = { player = who, key = key, amount = amount, t = os.time() }
-    -- drop type entries that are too old, then try to pair with a waiting one
-    local list = typeStash[key]
-    if list then
-      local now = os.time()
-      for i = #list, 1, -1 do if now - list[i].t > PEND_SECONDS then table.remove(list, i) end end
-    end
-    local e = takeEntry(list, amount)
-    if e then applyDamage(p, e.cat) else pending[#pending + 1] = p end
   end
 end
 
@@ -1605,37 +1443,6 @@ handlers.taken = function(def, selfObj, nums, objs, bools, path)
       if ffLogged <= 20 then log(string.format("friendly fire: %s hit %s for %.1f", an, name, amount)) end
     end
   end
-end
-
-handlers.shot = function(def, selfObj, nums, objs)
-  local players = findActors(selfObj, objs)
-  local who = players[1] or localPlayer()
-  if who then addMisc(playerName(who), "shots", 1) end
-end
-
--- Hit markers (a shot that hit an enemy; Critical = weakspot). Several classes have this function and one hit may call
--- more than one of them, so only the first path that fires in a game is used.
-local hitLogged, hitLastPath, hitLastTime = 0, {}, {}
-handlers.hit = function(def, selfObj, nums, objs, bools, path)
-  -- tally per source function (written to the log when a game ends) so we can see which one carries YOUR hits / weakspots
-  local ps = hitPathStats[path]
-  if not ps then ps = { n = 0, crit = 0, recv = 0 }; hitPathStats[path] = ps end
-  ps.n = ps.n + 1
-  if bools and bools[1] == true then ps.crit = ps.crit + 1 end
-  if bools and bools[2] == true then ps.recv = ps.recv + 1 end
-  local players = findActors(selfObj, objs)
-  local who = players[1] or localPlayer()
-  if not who then return end
-  local name = playerName(who)
-  if hitLogged < 12 then
-    hitLogged = hitLogged + 1
-    log(string.format("hitmarker: %s flags=%s,%s -> %s", tostring(path):match("([^/]+)$") or "?", tostring(bools and bools[1]), tostring(bools and bools[2]), name))
-  end
-  -- one hit may call several of these functions within a few milliseconds: skip the echo from a different function
-  local now = os.clock()
-  if hitLastPath[name] and hitLastPath[name] ~= path and (now - (hitLastTime[name] or 0)) < 0.03 then return end
-  hitLastPath[name], hitLastTime[name] = path, now
-  -- (hit markers only arrive for a few hits, so they are no longer counted; hits come from the damage feed)
 end
 
 handlers.death = function(def, selfObj, nums, objs)
@@ -1849,47 +1656,6 @@ local function writeDiscovery()
   f:write(string.format("\n%d candidate functions out of %d Blueprint functions\n", n, #funcs))
   f:close()
   log("wrote discovery.txt (" .. n .. " candidates)")
-end
-
------------------------------------------------------------------- shots fired (bullet actors spawned by players)
-local shotLogged = 0
-local function ownerPlayer(obj)
-  local cur = obj
-  for _ = 1, 4 do
-    if not isValidObj(cur) then return nil end
-    if isPlayer(cur) then return cur end
-    local nxt = safe(function() return cur:GetOwner() end)
-    if not isValidObj(nxt) then nxt = safe(function() return cur.Instigator end) end
-    if not isValidObj(nxt) then nxt = safe(function() return cur.Owner end) end
-    cur = unwrap(nxt)
-  end
-  return nil
-end
-
-local function onShot(obj)
-  obj = unwrap(obj)
-  if not isValidObj(obj) then return end
-  local who = ownerPlayer(obj) or localPlayer()
-  if shotLogged < 6 then
-    shotLogged = shotLogged + 1
-    log(string.format("shot: %s owner=%s -> %s", fullName(obj):match("([^%.:]+)$") or "?",
-      className(safe(function() return obj:GetOwner() end)), who and playerName(who) or "nobody"))
-  end
-  if who then addMisc(playerName(who), "shots", 1) end
-end
-
-local shotWatching = false
-local function installShotWatcher()
-  if shotWatching or not NotifyOnNewObject then return end
-  local okAny = false
-  for _, cp in ipairs(C.shotClasses or {}) do
-    local ok, err = pcall(NotifyOnNewObject, cp, function(obj)
-      -- the owner is set right after spawning, so look a moment later
-      ExecuteWithDelay(120, function() ExecuteInGameThread(function() pcall(onShot, obj) end) end)
-    end)
-    if ok then okAny = true; log("watching shots: " .. cp) else log("shot watcher failed " .. cp .. ": " .. tostring(err)) end
-  end
-  shotWatching = okAny
 end
 
 ------------------------------------------------------------------ leaderboard sync
@@ -2641,7 +2407,6 @@ bind(C.keyScrollDown or "DOWN_ARROW", function() scrollBy(C.scrollStep or 120) e
 bind(C.keyHistoryNewer or "RIGHT_ARROW", function() stepHistory(-1) end)
 bind(C.keyReset or "F11", function()
   -- throw away the current game's numbers WITHOUT saving them (handy for testing, also works in the lobby)
-  pending, typeStash = {}, {}
   newSession(currentMapName())
   log("stats reset (discarded, not saved)")
   if UI.visible and UI.mode == "live" and not uiBlocked() then render(liveView()) end
@@ -2666,7 +2431,6 @@ LoopAsync(2000, function()
     ExecuteInGameThread(function()
       if hooksDone then return end
       hooksDone = installHooks()
-      if hooksDone then installShotWatcher() end
       if hooksDone and C.dumpClassesOnStart then pcall(classDump) end
     end)
   end
@@ -2699,7 +2463,6 @@ LoopAsync(1000, function()
   ExecuteInGameThread(function()
     local ok, err = pcall(function()
       checkMapChange()
-      flushPending(false)
       -- reading other objects is skipped on start-up / menu maps and while a level loads (that crashed the game)
       -- only when the hooks are in (= a player exists) and the map has been loaded for a while
       local canPoll = Session and hooksDone and not uiBlocked()
