@@ -14,3 +14,5 @@ First public release.
 - config.lua holds only player settings; the game knowledge lives in main.lua, so a kept config.lua never blocks fixes.
 - New enemies, bosses and damage types can be named in config.lua (C.extraEnemyTypes ...).
 - Research tools (F9 discovery, extra logging) are off unless C.debug = true.
+- Performance: far fewer game look-ups per hit, the board only moves what changed, weapon jokers are read once per
+  mission and saved games are read from disk only after a new game was saved.

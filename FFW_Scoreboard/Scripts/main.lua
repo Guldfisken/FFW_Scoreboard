@@ -503,7 +503,9 @@ local function appendLoadouts(sess)
   f:close()
 end
 
+local historyCache = nil   -- parsed saved games; read from disk again only after a game was saved
 local function appendHistory(sess)
+  historyCache = nil
   local rows = sessionRows(sess)
   if #rows == 0 then return end
   pcall(appendLoadouts, sess)
@@ -527,6 +529,7 @@ local function autosaveCurrent()
 end
 
 local function loadHistory()
+  if historyCache then return historyCache end
   local games, byId = {}, {}
   local f = io.open(HISTORY, "r")
   if not f then return games end
@@ -577,6 +580,7 @@ local function loadHistory()
     lf:close()
   end
   table.sort(games, function(a, b) return a.start > b.start end) -- newest first
+  historyCache = games
   return games
 end
 
@@ -784,7 +788,12 @@ local function ensureUI()
   return buildUI()
 end
 
+-- Positions are only sent to the game when they change: every change makes the game lay out the panel again.
+local slotLast = setmetatable({}, { __mode = "k" })
 local function place(slot, x, y, ax, ay)
+  local k = x .. "," .. y .. "," .. (ax or 0) .. "," .. (ay or 0)
+  if slotLast[slot] == k then return end
+  slotLast[slot] = k
   safe(function()
     slot:SetPosition({ X = x, Y = y })
     slot:SetAlignment({ X = ax or 0, Y = ay or 0 })
@@ -792,6 +801,9 @@ local function place(slot, x, y, ax, ay)
 end
 
 local function box(slot, x, y, w, h)
+  local k = x .. "," .. y .. "," .. w .. "," .. h
+  if slotLast[slot] == k then return end
+  slotLast[slot] = k
   safe(function()
     slot:SetPosition({ X = x, Y = y })
     slot:SetSize({ X = w, Y = h })
@@ -2306,8 +2318,14 @@ end
 
 -- weapon jokers of the local player, from the save game in memory: { ["Minigun"] = { "jokerScrubHit", ... }, ... }
 UI.readWeaponJokers = function()
+  -- Fitted weapon jokers cannot change during a mission, so they are read once per mission (again after 10 s while
+  -- nothing was found yet, e.g. the save not loaded). In the lobby they can change, so there every 10 s.
   local now = os.time()
-  if UI.wjCache and now - (UI.wjTime or 0) < 10 then return UI.wjCache end
+  local sid = Session and Session.id
+  if UI.wjCache and UI.wjSession == sid then
+    local inLobby = not Session or isLobby(Session.map)
+    if (next(UI.wjCache) and not inLobby) or now - (UI.wjTime or 0) < 10 then return UI.wjCache end
+  end
   local out = {}
   pcall(function()
     local sg = FindFirstOf("SG_PlayerProgress_C")
@@ -2349,7 +2367,7 @@ UI.readWeaponJokers = function()
     end)
     UI.wjLogged = true
   end)
-  UI.wjCache, UI.wjTime = out, now
+  UI.wjCache, UI.wjTime, UI.wjSession = out, now, sid
   return out
 end
 
