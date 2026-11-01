@@ -317,6 +317,14 @@ local function boolProp(o, names)
   return false
 end
 
+-- The object's memory address: a stable key for caches (UE4SS hands out a new Lua handle on every call, so the
+-- handle itself cannot be used as a key). nil if not available.
+local function addrOf(o)
+  local ok, a = pcall(function() return o:GetAddress() end)
+  if ok and type(a) == "number" and a ~= 0 then return a end
+  return nil
+end
+
 local function sanitize(s) return (tostring(s):gsub("[,\r\n]", " ")) end
 
 ------------------------------------------------------------------ players
@@ -328,9 +336,10 @@ local function isPlayer(o)
   return isValidObj(o) and (className(o):find(C.playerClass) ~= nil or isPlayerState(o))
 end
 
-local nameCache = setmetatable({}, { __mode = "k" })
+local nameCache = {}   -- address -> player name (cleared every game)
 local function playerName(o)
-  if nameCache[o] then return nameCache[o] end
+  local key = addrOf(o)
+  if key and nameCache[key] then return nameCache[key], true end
   local name
   local ps = o
   if not isPlayerState(o) then ps = safe(function() return o.PlayerState end) end
@@ -339,11 +348,11 @@ local function playerName(o)
     if s and s ~= "" then name = s end
   end
   if not name then
-    local short = fullName(o):match("([^%.:]+)$") or "Player"
-    name = short
+    -- the name is not known yet (still being sent): use the object name for now and look again next time
+    return fullName(o):match("([^%.:]+)$") or "Player", false
   end
-  nameCache[o] = name
-  return name
+  if key then nameCache[key] = name end
+  return name, true
 end
 
 -- Look-ups shared within one tick of the main loop (one search per second instead of one per caller).
@@ -371,6 +380,7 @@ end
 
 ------------------------------------------------------------------ session / stats model
 local Session = nil
+local ResetHitCaches   -- set in "event handling"
 local Boards = {}      -- latest replicated leaderboard per player name (see 'leaderboard sync')
 local MergeBoards      -- assigned below
 local sessionCounter = 0
@@ -386,6 +396,8 @@ local function newSession(mapName)
     loadouts = {},   -- player name -> { slot = item }
   }
   Boards = {}
+  for k in pairs(nameCache) do nameCache[k] = nil end
+  if ResetHitCaches then ResetHitCaches() end
 end
 
 local function statsFor(name)
@@ -1503,6 +1515,37 @@ local function enemyLabel(enemy)
 end
 local function categoryOf(typeObj) return firstLabel(C.damageCategories, fullName(typeObj), "Other") end
 
+-- Per-hit caches. The damage feed can fire hundreds of times a second (damage over time on a horde), so what is
+-- known about an enemy (class, boss / elite, board label) and about a damage causer (which player owns it) is
+-- remembered by address instead of being read from the game on every hit.
+--   enemies: re-read every 10 seconds, and forgotten when the enemy dies (a dead enemy's address can later be
+--            reused by a new enemy); boss / elite is read per enemy, not per class.
+--   causers: kept for 5 seconds (turrets and other spawned actors come and go).
+local enemyCache, enemyCacheN = {}, 0
+local causerCache, causerCacheN = {}, 0
+ResetHitCaches = function()
+  enemyCache, enemyCacheN, causerCache, causerCacheN = {}, 0, {}, 0
+end
+
+local function enemyInfo(enemy)
+  local key = addrOf(enemy)
+  local now = os.clock()
+  local e = key and enemyCache[key]
+  if e and now - e.t < 10 then return e end
+  e = { t = now, cls = className(enemy), kind = classifyTarget(enemy), label = enemyLabel(enemy) }
+  if key then
+    enemyCacheN = enemyCacheN + 1
+    if enemyCacheN > 3000 then enemyCache, enemyCacheN = {}, 1 end
+    enemyCache[key] = e
+  end
+  return e
+end
+
+local function forgetEnemy(enemy)
+  local key = addrOf(enemy)
+  if key then enemyCache[key] = nil end
+end
+
 local loggedTypes = {}
 local function addMisc(name, field, n)
   if not Session then newSession("?") end
@@ -1533,6 +1576,29 @@ local function playerFromCauser(o)
   return nil
 end
 
+-- who owns a damage causer: { pl = player object or false, name, cls, self = causer is the player itself }
+local function causerInfo(causer)
+  local key = addrOf(causer)
+  local now = os.clock()
+  local c = key and causerCache[key]
+  if c and now - c.t < 5 then return c end
+  local pl = playerFromCauser(causer)
+  c = { t = now, pl = pl or false, cls = isValidObj(causer) and className(causer) or "none" }
+  if pl then
+    local known
+    c.name, known = playerName(pl)
+    c.self = (causer == pl)
+    -- a player whose name is not known yet is not cached (looked up again on the next hit)
+    if not known then key = nil end
+  end
+  if key then
+    causerCacheN = causerCacheN + 1
+    if causerCacheN > 2000 then causerCache, causerCacheN = {}, 1 end
+    causerCache[key] = c
+  end
+  return c
+end
+
 local function argText(v)
   v = unwrap(v)
   if v == nil then return nil end
@@ -1557,16 +1623,17 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
   local amount = unwrap(args[L.amount])
   if type(amount) ~= "number" or amount <= 0 then return end
   local causer = unwrap(args[2])
-  local pl = playerFromCauser(causer)
+  local ci = causerInfo(causer)
+  local ei = enemyInfo(enemy)
   -- tally per function + enemy class (written to the log at the end of a game)
-  local tk = (tostring(path):match("([^/]+)$") or "?") .. " on " .. className(enemy)
+  local tk = (tostring(path):match("([^/]+)$") or "?") .. " on " .. ei.cls
   feedTally[tk] = (feedTally[tk] or 0) + amount
-  if not pl then
-    local cn = isValidObj(causer) and className(causer) or "none"
+  if not ci.pl then
+    local cn = ci.cls
     if not feedNoPlayerLogged[cn] then feedNoPlayerLogged[cn] = true; log("damage feed: causer " .. cn .. " is not a player (ignored)") end
     return
   end
-  local who = playerName(pl)
+  local who = ci.name
   -- the same hit can arrive through more than one of the hooked functions (parent + override, child + parent)
   local now = os.clock()
   -- (no enemy in the key: a wagon hit may be reported on the wagon AND on the train; only a different function counts as echo)
@@ -1585,17 +1652,17 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
     log("damage source: F_DamageFeedback_Multicast (damage of all players)")
   end
   record(who, "damage", amount)
-  local kind = classifyTarget(enemy)
+  local kind = ei.kind
   if kind == "boss" then record(who, "bossDamage", amount)
   elseif kind == "elite" then record(who, "eliteDamage", amount) end
-  recordEnemy(who, enemyLabel(enemy), 0, amount)
+  recordEnemy(who, ei.label, 0, amount)
   -- damage type (class) -> category; no type = gun / melee
   local dt = L.dt and unwrap(args[L.dt]) or nil
   if type(dt) ~= "userdata" and type(dt) ~= "table" then dt = nil end
   local tn = dt and safe(function() return fullName(dt) end)
   local cat = "Weapon"
   if type(tn) == "string" and tn ~= "" and not tn:find("None") then
-    cat = categoryOf(dt)
+    cat = firstLabel(C.damageCategories, tn, "Other")
     local short = tn:match("([^%.:/ ]+)$") or tn
     if not loggedTypes[short] then loggedTypes[short] = true; log("damage type seen: " .. short .. " -> " .. cat) end
   end
@@ -1609,11 +1676,11 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
   end
   -- spells: hits that carry an element but no item name (seen in the Saloon: Ice Glaze = no item, element 15),
   -- or that come from a spell actor (turret, decoy ...) owned by the player
-  local causerCls = isValidObj(causer) and className(causer) or "none"
+  local causerCls = ci.cls
   local elem = L.elem and unwrap(args[L.elem]) or nil
   if type(elem) ~= "number" then elem = nil end
   if (not item or item == "") and elem then cat = "Spells" end
-  if causer ~= pl and matchesAny(causerCls, C.spellCauserPatterns or { "Spell" }) then cat = "Spells" end
+  if not ci.self and matchesAny(causerCls, C.spellCauserPatterns or { "Spell" }) then cat = "Spells" end
   do
     local ek = tostring(item) .. "|" .. tostring(elem) .. "|" .. causerCls .. "|" .. cat
     if not loggedTypes[ek] then loggedTypes[ek] = true; log("damage feed item/element/causer/type: " .. ek) end
@@ -1648,6 +1715,7 @@ handlers.kill = function(def, selfObj, nums, objs)
   local enemy = others[1]
   if enemy then
     local key = fullName(enemy)
+    forgetEnemy(enemy)
     local now = os.time()
     if key ~= "" then
       if seenKills[key] and now - seenKills[key] < 60 then return end -- same enemy already counted by another hook
@@ -1812,12 +1880,18 @@ local function hookPath(path, fn)
 end
 
 -- hook one function and send its calls to the handlers of the given events
+local RAW_EVENTS = { feed = true, feedsec = true }   -- handlers that only use `args` (no generic argument sorting)
+local EMPTY = setmetatable({}, { __newindex = function() end })
 local function hookEvents(path, evs)
   local sn = shortName(path)
+  local raw = true
+  for _, ev in ipairs(evs) do if not RAW_EVENTS[ev] then raw = false end end
   hookPath(path, function(self, ...)
     local args = table.pack(...)
     local ok, err = pcall(function()
-      local selfObj, nums, objs, bools = collectArgs(self, table.unpack(args, 1, args.n))
+      local selfObj, nums, objs, bools
+      if raw then selfObj, nums, objs, bools = unwrap(self), EMPTY, EMPTY, EMPTY   -- the damage feed reads its own arguments
+      else selfObj, nums, objs, bools = collectArgs(self, table.unpack(args, 1, args.n)) end
       if C.learn then learnLog(path, self, table.unpack(args, 1, args.n)) end
       for _, ev in ipairs(evs) do handlers[ev](C.events[ev], selfObj, nums, objs, bools, path, args) end
     end)
