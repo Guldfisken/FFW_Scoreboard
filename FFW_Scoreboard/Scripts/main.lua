@@ -388,7 +388,7 @@ end
 
 ------------------------------------------------------------------ session / stats model
 local Session = nil
-local ResetHitCaches, FlushKills   -- set in "event handling"
+local ResetHitCaches, FlushKills, ReportVanished   -- set in "event handling"
 local Boards = {}      -- latest replicated leaderboard per player name (see 'leaderboard sync')
 local MergeBoards      -- assigned below
 local sessionCounter = 0
@@ -1427,6 +1427,7 @@ local function endSession(reason)
   end
   if MergeBoards and Session then pcall(MergeBoards) end
   if FlushKills then pcall(FlushKills, true) end
+  if C.debug and ReportVanished then pcall(ReportVanished) end
   -- check: kills per enemy type (last hit) next to the game's own kill count, per player
   if Session then
     for name, s in pairs(Session.players) do
@@ -1702,6 +1703,7 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
       lh = {}
       lastHit[key] = lh
     end
+    if C.debug and not lh.obj then lh.obj = enemy end   -- debug: to notice enemies that vanish without health 0
     if not lh.deadAt then
       lh.who, lh.label, lh.t = who, ei.label, now2
     elseif now2 - lh.deadAt < 0.5 then
@@ -1762,8 +1764,31 @@ handlers.health = function(def, selfObj)
   pendingKills[#pendingKills + 1] = lh
 end
 
+-- Debug check (C.debug): enemies a player hit that disappeared from the game without their health reaching 0 here.
+-- If these are many, kills are being missed (e.g. enemies removed before their last health update arrived).
+local vanished = {}   -- player -> { quick = n (within 2 s of the last hit), late = n }
+local function checkVanished()
+  local now = os.clock()
+  for k, lh in pairs(lastHit) do
+    if lh.obj and not lh.deadAt and not lh.vanished and not isValidObj(lh.obj) then
+      lh.vanished = true
+      local v = vanished[lh.who] or { quick = 0, late = 0 }
+      vanished[lh.who] = v
+      if now - lh.t <= 2 then v.quick = v.quick + 1 else v.late = v.late + 1 end
+    end
+  end
+end
+ReportVanished = function()
+  for who, v in pairs(vanished) do
+    log(string.format("debug kill check %s: hit enemies that vanished without health 0: %d within 2 s of the hit, %d later",
+      who, v.quick, v.late))
+  end
+  vanished = {}
+end
+
 -- credit the kills of enemies that died at least half a second ago (all of them when a game ends)
 FlushKills = function(force)
+  if C.debug then pcall(checkVanished) end
   if #pendingKills == 0 then return end
   local now, keep = os.clock(), {}
   for _, lh in ipairs(pendingKills) do
