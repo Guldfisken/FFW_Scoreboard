@@ -3,7 +3,7 @@
 -- saves each finished game and lets you browse past games. https://github.com/Guldfisken/FFW_Scoreboard
 -- License: GPL-3.0
 
-local VERSION = "1.0.0"
+local VERSION = "1.0.1"
 
 local UEHelpers_ok, UEHelpers = pcall(require, "UEHelpers")
 
@@ -167,6 +167,14 @@ local function defaults()
     revive = {
       names  = { "F_LeaderboardStats_AddRevive" },
       amount = "one",
+    },
+    -- Enemy health (BP_Enemy.Health) is sent to every player; OnRep_health runs on every machine when it changes.
+    -- When it reaches 0, the kill goes to the player who hit that enemy last (see the damage feed), so kills per
+    -- enemy type are known for everyone, not only for yourself.
+    health = {
+      names  = { "OnRep_health" },
+      owner  = "/Game/Enemies/BP_Enemy%.BP_Enemy_C:",
+      amount = "none",
     },
     -- Difficulty (fallback, end of mission): BPFL F_ScaleXpWithDifficulty(Difficulty:int)
     difficulty = {
@@ -380,7 +388,7 @@ end
 
 ------------------------------------------------------------------ session / stats model
 local Session = nil
-local ResetHitCaches   -- set in "event handling"
+local ResetHitCaches, FlushKills   -- set in "event handling"
 local Boards = {}      -- latest replicated leaderboard per player name (see 'leaderboard sync')
 local MergeBoards      -- assigned below
 local sessionCounter = 0
@@ -1418,6 +1426,17 @@ local function endSession(reason)
     for k in pairs(feedTally) do feedTally[k] = nil end
   end
   if MergeBoards and Session then pcall(MergeBoards) end
+  if FlushKills then pcall(FlushKills, true) end
+  -- check: kills per enemy type (last hit) next to the game's own kill count, per player
+  if Session then
+    for name, s in pairs(Session.players) do
+      local n = 0
+      for _, k in pairs(s.ek or {}) do n = n + k end
+      if n > 0 or (s.kills or 0) > 0 then
+        log(string.format("kill check %s: kills per enemy type = %d, Kills (leaderboard) = %d", name, n, s.kills or 0))
+      end
+    end
+  end
   -- weapons / items that dealt damage (from the damage feed) -> log + loadouts.csv ("used1", "used2", ...)
   if Session then
     for name, s in pairs(Session.players) do
@@ -1535,8 +1554,13 @@ local function categoryOf(typeObj) return firstLabel(C.damageCategories, fullNam
 --   causers: kept for 5 seconds (turrets and other spawned actors come and go).
 local enemyCache, enemyCacheN = {}, 0
 local causerCache, causerCacheN = {}, 0
+-- Kills per enemy type: who hit each enemy last, and enemies whose health reached 0 (credited half a second later,
+-- because the damage report of the killing blow can arrive just after the health update).
+local lastHit, lastHitN = {}, 0   -- enemy key -> { who, label, t, deadAt, credited }
+local pendingKills = {}
 ResetHitCaches = function()
   enemyCache, enemyCacheN, causerCache, causerCacheN = {}, 0, {}, 0
+  lastHit, lastHitN, pendingKills = {}, 0, {}
 end
 
 local function enemyInfo(enemy)
@@ -1668,6 +1692,22 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
   if kind == "boss" then record(who, "bossDamage", amount)
   elseif kind == "elite" then record(who, "eliteDamage", amount) end
   recordEnemy(who, ei.label, 0, amount)
+  do
+    local key = addrOf(enemy) or fullName(enemy)
+    local lh = lastHit[key]
+    local now2 = os.clock()
+    if not lh or lh.credited then
+      lastHitN = lastHitN + 1
+      if lastHitN > 3000 then lastHit, lastHitN = {}, 1 end
+      lh = {}
+      lastHit[key] = lh
+    end
+    if not lh.deadAt then
+      lh.who, lh.label, lh.t = who, ei.label, now2
+    elseif now2 - lh.deadAt < 0.5 then
+      lh.who, lh.label = who, ei.label   -- the killing blow, reported just after the health update
+    end
+  end
   -- damage type (class) -> category; no type = gun / melee
   local dt = L.dt and unwrap(args[L.dt]) or nil
   if type(dt) ~= "userdata" and type(dt) ~= "table" then dt = nil end
@@ -1707,6 +1747,39 @@ end
 
 handlers.feedsec = function(...) return handlers.feed(...) end
 
+-- An enemy's health changed (on every machine). At 0 the player who hit it last gets the kill for that enemy type.
+local healthSeenLogged = false
+handlers.health = function(def, selfObj)
+  local enemy = selfObj
+  if not isValidObj(enemy) then return end
+  local h = tonumber(unwrap(safe(function() return enemy.Health end)))
+  if not h or h > 0 then return end
+  local key = addrOf(enemy) or fullName(enemy)
+  local lh = lastHit[key]
+  if not lh or lh.deadAt then return end
+  lh.deadAt = os.clock()
+  forgetEnemy(enemy)
+  pendingKills[#pendingKills + 1] = lh
+end
+
+-- credit the kills of enemies that died at least half a second ago (all of them when a game ends)
+FlushKills = function(force)
+  if #pendingKills == 0 then return end
+  local now, keep = os.clock(), {}
+  for _, lh in ipairs(pendingKills) do
+    if force or now - lh.deadAt >= 0.5 then
+      lh.credited = true
+      if lh.deadAt - lh.t <= 15 then   -- hit by a player in the last 15 s before it died
+        if not healthSeenLogged then healthSeenLogged = true; log("kills per enemy: from enemy health (OnRep_health) + last hit") end
+        recordEnemy(lh.who, lh.label, 1, 0)
+      end
+    else
+      keep[#keep + 1] = lh
+    end
+  end
+  pendingKills = keep
+end
+
 -- difficulty (fallback): BPFL F_ScaleXpWithDifficulty(Difficulty:int) runs at the end of a mission with the real value
 handlers.difficulty = function(def, selfObj, nums)
   local v = nums and nums[1]
@@ -1742,7 +1815,7 @@ handlers.kill = function(def, selfObj, nums, objs)
   local who = players[1] or localPlayer()
   if who then
     record(playerName(who), "kills", 1)
-    if enemy then recordEnemy(playerName(who), enemyLabel(enemy), 1, 0) end
+    -- (kills per enemy type come from the enemy's health + last hit, for every player: see handlers.health)
   end
 end
 
@@ -1892,7 +1965,7 @@ local function hookPath(path, fn)
 end
 
 -- hook one function and send its calls to the handlers of the given events
-local RAW_EVENTS = { feed = true, feedsec = true }   -- handlers that only use `args` (no generic argument sorting)
+local RAW_EVENTS = { feed = true, feedsec = true, health = true }   -- handlers that only use `args` (no generic argument sorting)
 local EMPTY = setmetatable({}, { __newindex = function() end })
 local function hookEvents(path, evs)
   local sn = shortName(path)
@@ -2834,6 +2907,7 @@ LoopAsync(1000, function()
   Cache.tick = tick
   ExecuteInGameThread(function()
     local ok, err = pcall(function()
+      if FlushKills then pcall(FlushKills, false) end
       checkMapChange()
       -- reading other objects is skipped on start-up / menu maps and while a level loads (that crashed the game)
       -- only when the hooks are in (= a player exists) and the map has been loaded for a while

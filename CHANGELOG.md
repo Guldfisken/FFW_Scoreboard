@@ -2,6 +2,14 @@
 
 All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see [RELEASING.md](RELEASING.md)).
 
+## 1.0.1 – 2026-11-02
+
+- Fixed: kills per enemy type (the "(kills)" numbers in the Enemies table) were only counted for yourself; other
+  players always showed (0). They are now counted for every player, whether you host or join: when an enemy's health
+  reaches 0, the kill goes to the player who hit it last.
+- scoreboard.log shows a "kill check" line per player at the end of each game: the kills per enemy type added up,
+  next to the game's own kill count.
+
 ## 1.0.0 – 2026-11-02
 First public release.
 
