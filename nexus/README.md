@@ -15,5 +15,5 @@ Text for the mod page on [Nexus Mods](https://www.nexusmods.com/farfarwest/mods)
 | Name | FFW Scoreboard |
 | Version | the release version, e.g. `1.0.0` |
 | File | `FFW_Scoreboard_vX.Y.Z.zip` from the GitHub release |
-| Requirements | UE4SS |
+| Requirements | UE4SS (https://www.nexusmods.com/farfarwest/mods/2) |
 | Source / permissions | GPL-3.0, source on GitHub |
