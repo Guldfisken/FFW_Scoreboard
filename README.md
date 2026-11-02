@@ -68,7 +68,7 @@ The mod only uses information the game sends to **every** player, so the board i
 - **Weakspot hits and missed shots are not tracked.** They are not part of what the server sends to everyone, so
   they could not be shown consistently.
 - **Kills per enemy type are counted for yourself only** (the "(kills)" numbers in the Enemies table). Other
-  players show `(0)` there, even if they have the mod too. Their total kills in the Kills column are correct.
+  players show `(0)` there, even if they have the mod too.
 - **Weapon jokers are shown for yourself only.** They are stored in each player's own save, not synced.
 - **Picked-up jokers** of other players may not be visible when you join someone else's game.
 - **Damage taken and Friendly fire**: as host you see everyone's; when you join you mainly see your own.
