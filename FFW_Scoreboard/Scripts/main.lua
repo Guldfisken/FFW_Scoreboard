@@ -2974,7 +2974,19 @@ local function probeClass(cls)
           end
         end) end)
         names[#names + 1] = n
-        probeLog("fn " .. cpath .. ":" .. n .. "(" .. table.concat(parts, ", ") .. ")")
+        -- network flags: Multicast = runs on every machine, Server = runs on the host only, Client = owning player only
+        local net = ""
+        local fl = safe(function() return fn:GetFunctionFlags() end)
+        if type(fl) == "number" then
+          local tags = {}
+          local function has(bit) return math.floor(fl / bit) % 2 == 1 end
+          if has(0x00004000) then tags[#tags + 1] = "Multicast" end
+          if has(0x00200000) then tags[#tags + 1] = "Server" end
+          if has(0x01000000) then tags[#tags + 1] = "Client" end
+          if has(0x00000040) and #tags == 0 then tags[#tags + 1] = "Net" end
+          net = " [" .. (#tags > 0 and table.concat(tags, ",") or "local") .. string.format(" flags=0x%08X]", fl)
+        end
+        probeLog("fn " .. cpath .. ":" .. n .. "(" .. table.concat(parts, ", ") .. ")" .. net)
       end) end)
       for _, n in ipairs(names) do
         local l = n:lower()
