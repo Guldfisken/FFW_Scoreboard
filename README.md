@@ -65,15 +65,18 @@ The mod only uses information the game sends to **every** player, so the board i
   "Scrub Hit") also count as Weapon.
 - **Shield** is the sum of every increase of a player's shield.
 
-### Limitations
+## Limitations
 
+Most numbers are the same for everyone in the game. These are not:
+
+- **Cryptic Train boss: teammates' damage is only tracked when you host.** The train's carriages only report hits
+  to the player who fired and to the host. When you join someone else's game, you see your own train damage, and
+  your teammates show 0 boss damage for the train.
+- **Damage taken and Friendly fire**: as host you see everyone's; when you join you mainly see your own.
 - **Weakspot hits and missed shots are not tracked.** They are not part of what the server sends to everyone, so
   they could not be shown consistently.
 - **Weapon jokers are shown for yourself only.** They are stored in each player's own save, not synced.
 - **Picked-up jokers** of other players may not be visible when you join someone else's game.
-- **Damage taken and Friendly fire**: as host you see everyone's; when you join you mainly see your own.
-- **Cryptic Train damage**: the train's carriages only report hits to the player who fired. As host you see
-  everyone's train damage; when you join you see your own (teammates show 0 boss damage for the train).
 - The difficulty name mapping (`C.difficultyNames`) has not been verified for every difficulty yet.
 
 ## Files the mod writes (in `Scripts\`)
