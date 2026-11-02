@@ -1,0 +1,65 @@
+[size=5][b]FFW Scoreboard[/b][/size]
+An in-game scoreboard for Far Far West. See what everyone did in a mission: damage, kills, healing, deaths, loadout and jokers, in a panel styled like the game's own menus. Every finished game is saved, so you can look back at it later.
+
+It works the same whether you host or join, and [b]the other players do not need the mod[/b].
+
+[line]
+[size=4][b]Features[/b][/size]
+[list]
+[*][b]Overview per player:[/b] Kills, Damage, Boss damage, Elite damage, Damage taken, Deaths, Revives, Self heal, Team heal, Shield generated and Friendly fire. The best value in each column is highlighted.
+[*][b]Damage types:[/b] Weapon, Spells, Fire, Acid, Elec, Frost, Voodoo.
+[*][b]Enemies:[/b] damage and kills per enemy type. Bosses such as the Cryptic Train and the Halloween boss get their own line.
+[*][b]Loadout:[/b] hero jokers, primary and secondary weapon (with your own weapon jokers), utility, spells, and the jokers picked up during the mission, coloured by rarity.
+[*][b]Saved games:[/b] map, difficulty, date, length and Victory / Defeat. Browse them any time, also from the lobby / saloon.
+[*]Fixed text size; the board scrolls when it is taller than the screen.
+[/list]
+
+[line]
+[size=4][b]Requirements[/b][/size]
+[list]
+[*][url=https://github.com/UE4SS-RE/RE-UE4SS]UE4SS[/url] installed for Far Far West
+[/list]
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install UE4SS into [i]...\steamapps\common\FarFarWest\FarFarWest\Binaries\Win64\[/i]
+[*]Extract the zip into [i]...\Binaries\Win64\ue4ss\Mods\[/i], so you get [i]Mods\FFW_Scoreboard\[/i] with [i]enabled.txt[/i] and the [i]Scripts[/i] folder inside.
+[*]Start the game and press [b]F6[/b] during a mission.
+[/list]
+[b]Updating:[/b] replace the folder. You can keep your own [i]Scripts\config.lua[/i]; it only holds your settings. Saved games are kept.
+[b]Uninstall:[/b] delete the [i]FFW_Scoreboard[/i] folder.
+
+[line]
+[size=4][b]Keys[/b][/size]
+[list]
+[*][b]F6[/b] - live scoreboard on / off
+[*][b]F8[/b] - saved games on / off ([b]Right / Left[/b] = older / newer game)
+[*][b]Up / Down[/b] - scroll the board
+[*][b]F10[/b] - save the current game now and start a new one
+[*][b]F11[/b] - reset the current numbers without saving (handy on the training dummy)
+[/list]
+All keys can be changed in [i]Scripts\config.lua[/i].
+
+[line]
+[size=4][b]Good to know[/b][/size]
+The mod only uses information the game sends to every player, so the board looks the same for everyone in the game.
+[list]
+[*][b]Weakspot hits and missed shots are not tracked[/b] - the game does not send them to every player.
+[*][b]Weapon jokers are shown for yourself only[/b] - they are stored in each player's own save.
+[*][b]Picked-up jokers[/b] of other players may not show when you join someone else's game.
+[*][b]Damage taken and Friendly fire:[/b] as host you see everyone's; when you join you mainly see your own.
+[*]If you join mid-game, kills, deaths, revives and heals are the totals for the whole game.
+[/list]
+
+[size=4][b]After a game update[/b][/size]
+New enemies show up as "Other" until the mod knows them. You can name them yourself in [i]config.lua[/i] without waiting for an update:
+[code]C.extraEnemyTypes = { { "Scarecrow", "Scarecrow" } }   -- name on the board, part of the class name
+C.extraBossPatterns = { "Scarecrow_Boss" }             -- also count it as boss damage[/code]
+The class name is written to [i]Scripts\scoreboard.log[/i] ("enemy class counted as 'Other': ...").
+
+[line]
+[size=4][b]Bugs and source[/b][/size]
+Source code, changelog and issue tracker: [url=https://github.com/Guldfisken/FFW_Scoreboard]github.com/Guldfisken/FFW_Scoreboard[/url]
+When reporting a problem, please attach [i]Scripts\scoreboard.log[/i] (and [i]ue4ss\UE4SS.log[/i] if the game crashed).
+
+Licensed under [url=https://github.com/Guldfisken/FFW_Scoreboard/blob/main/LICENSE]GPL-3.0[/url].
