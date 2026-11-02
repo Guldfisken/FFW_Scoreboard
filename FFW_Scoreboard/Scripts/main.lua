@@ -396,7 +396,7 @@ end
 
 ------------------------------------------------------------------ session / stats model
 local Session = nil
-local ResetHitCaches, FlushKills, ReportVanished, ReportProbe   -- set in "event handling" / start-up
+local ResetHitCaches, FlushKills, ReportVanished, ReportProbe, ReportKillSignals   -- set in "event handling" / start-up
 local Boards = {}      -- latest replicated leaderboard per player name (see 'leaderboard sync')
 local MergeBoards      -- assigned below
 local sessionCounter = 0
@@ -1437,6 +1437,7 @@ local function endSession(reason)
   if FlushKills then pcall(FlushKills, true) end
   if C.debug and ReportVanished then pcall(ReportVanished) end
   if C.debug and ReportProbe then pcall(ReportProbe) end
+  if C.debug and ReportKillSignals then pcall(ReportKillSignals) end
   -- check: kills per enemy type (last hit) next to the game's own kill count, per player
   if Session then
     for name, s in pairs(Session.players) do
@@ -3012,8 +3013,49 @@ local function probeClass(cls)
     depth = depth + 1
   end
 end
+-- Debug kill-signal test: candidate "this enemy died" functions of BP_Enemy. For each, the enemy's last hitter
+-- (from the damage feed) gets a test kill; the totals per player are logged at the end of a game, next to the game's
+-- own kill count, to find the death signal that matches it best.
+local KILL_SIGNALS = { "F_SpawnRagdoll", "F_Child_SpawnRagdoll", "F_SpawnRagdollCallback", "F_Child_Die",
+  "F_DestroyEnemy", "F_DropOnDeath", "F_KillNearbyEnemiesOnDeath", "ReceiveDestroyed" }
+local sigHooked, sigStats = false, {}
+local function hookKillSignals()
+  if sigHooked then return end
+  sigHooked = true
+  for _, fname in ipairs(KILL_SIGNALS) do
+    local fpath = "/Game/Enemies/BP_Enemy.BP_Enemy_C:" .. fname
+    if isValidObj(safe(StaticFindObject, fpath)) then
+      local ok = pcall(RegisterHook, fpath, function(self)
+        pcall(function()
+          local st = sigStats[fname] or { calls = 0, seen = {}, per = {} }
+          sigStats[fname] = st
+          st.calls = st.calls + 1
+          local e = unwrap(self)
+          local key = addrOf(e) or fullName(e)
+          if st.seen[key] then return end
+          st.seen[key] = true
+          local lh = lastHit[key]
+          if lh and lh.who then st.per[lh.who] = (st.per[lh.who] or 0) + 1 end
+        end)
+      end)
+      log("debug: kill-signal test hooked " .. fname .. (ok and "" or " (failed)"))
+    end
+  end
+end
+ReportKillSignals = function()
+  for fname, st in pairs(sigStats) do
+    local parts = {}
+    for who, n in pairs(st.per) do parts[#parts + 1] = who .. "=" .. n end
+    table.sort(parts)
+    log(string.format("debug kill signal %s: %d calls, credited to last hitter: %s", fname, st.calls,
+      #parts > 0 and table.concat(parts, "  ") or "-"))
+  end
+  sigStats = {}
+end
+
 tryProbe = function()
   if not C.debug then return end
+  pcall(hookKillSignals)
   for _, cn in ipairs(C.probeClasses or {}) do
     local o = safe(FindFirstOf, cn)
     if isValidObj(o) then
