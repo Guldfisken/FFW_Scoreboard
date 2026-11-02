@@ -1,0 +1,73 @@
+# Builds a release whenever the mod's version number (VERSION in FFW_Scoreboard/Scripts/main.lua) is new.
+# - New version            -> zip + GitHub release "vX.Y.Z" with the notes from CHANGELOG.md
+# - Same version as an existing release, but the mod files changed -> the run fails (bump the version)
+# - Same version, only docs / tooling changed -> nothing to release
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: v
+        run: |
+          VERSION=$(grep -oP '^local VERSION = "\K[0-9]+\.[0-9]+\.[0-9]+(?=")' FFW_Scoreboard/Scripts/main.lua)
+          if [ -z "$VERSION" ]; then echo "::error::VERSION not found in main.lua"; exit 1; fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Version already released
+        if: steps.v.outputs.exists == 'true'
+        run: |
+          V=${{ steps.v.outputs.version }}
+          if ! git diff --quiet "v$V" HEAD -- FFW_Scoreboard; then
+            echo "::error::The mod changed since v$V but VERSION in main.lua was not bumped."
+            exit 1
+          fi
+          echo "v$V is already released and the mod is unchanged; nothing to do."
+
+      - name: Release notes from CHANGELOG.md
+        if: steps.v.outputs.exists == 'false'
+        run: |
+          V=${{ steps.v.outputs.version }}
+          awk -v v="$V" '
+            /^## / { if (found) exit; if (index($0, "## " v " ") == 1 || $0 == "## " v) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "::error::CHANGELOG.md has no section '## $V'"; exit 1; fi
+          cat notes.md
+
+      - name: Build zip
+        if: steps.v.outputs.exists == 'false'
+        run: |
+          V=${{ steps.v.outputs.version }}
+          mkdir -p dist/pkg
+          cp -r FFW_Scoreboard dist/pkg/
+          cp README.md LICENSE CHANGELOG.md dist/pkg/FFW_Scoreboard/
+          (cd dist/pkg && zip -r -X "../FFW_Scoreboard_v$V.zip" FFW_Scoreboard)
+          unzip -l "dist/FFW_Scoreboard_v$V.zip"
+
+      - name: Create release
+        if: steps.v.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=${{ steps.v.outputs.version }}
+          gh release create "v$V" "dist/FFW_Scoreboard_v$V.zip" \
+            --target "$GITHUB_SHA" --title "FFW Scoreboard $V" --notes-file notes.md

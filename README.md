@@ -27,8 +27,9 @@ It works the same whether you host or join, and the other players do **not** nee
 ## Install
 
 1. Install UE4SS into `...\steamapps\common\FarFarWest\FarFarWest\Binaries\Win64\`.
-2. Copy the `FFW_Scoreboard` folder from this repository into `...\Binaries\Win64\ue4ss\Mods\`.
-   It must contain `enabled.txt` and the `Scripts` folder.
+2. Download `FFW_Scoreboard_vX.Y.Z.zip` from [Releases](https://github.com/Guldfisken/FFW_Scoreboard/releases)
+   and extract it into `...\Binaries\Win64\ue4ss\Mods\`, so you get `Mods\FFW_Scoreboard\` with `enabled.txt` and
+   the `Scripts` folder inside.
 3. Start the game and press **F6** during a mission.
 
 To update, replace `Scripts\main.lua`. You can keep your own `Scripts\config.lua`: it only holds your settings,
