@@ -31,5 +31,19 @@ The `Release` workflow (`.github/workflows/release.yml`) reads `VERSION`:
 
 ## Nexus Mods
 
-Download the zip from the newest GitHub release and upload it to Nexus as a new file version with the same
-version number.
+After a new release, the `Nexus Mods upload` workflow (`.github/workflows/nexus.yml`) uploads the same zip to
+Nexus Mods as a new version of the mod's main file, with the changelog section as the Nexus changelog. The previous
+version is moved to the archive and the mod page's version is updated.
+
+One-time setup (Settings → Secrets and variables → Actions):
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Secret | `NEXUSMODS_API_KEY` | Personal API key from nexusmods.com → account settings → API keys |
+| Variable | `NEXUS_FILE_ID` | The main file's ID: mod page → Files → the file's "API info" (or Manage files → edit) |
+| Variable | `NEXUS_MOD_ID` | The `id` from `https://api.nexusmods.com/v3/games/farfarwest/mods/<number in the mod page URL>` |
+
+Without the secret or `NEXUS_FILE_ID` the upload is skipped with a warning; without `NEXUS_MOD_ID` it is uploaded
+without a changelog. The file must already exist on Nexus (the first upload is manual).
+
+To retry or upload an older release by hand: Actions → Nexus Mods upload → Run workflow → enter the version.

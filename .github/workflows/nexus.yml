@@ -1,0 +1,87 @@
+# Uploads a GitHub release's zip to Nexus Mods as a new version of the mod's main file.
+# - Called by the Release workflow after it published a new release.
+# - Can also be started by hand (Actions -> Nexus Mods upload -> Run workflow), e.g. to retry an upload.
+#
+# Needs (Settings -> Secrets and variables -> Actions):
+#   secret   NEXUSMODS_API_KEY  your personal Nexus Mods API key
+#   variable NEXUS_FILE_ID      ID of the main file on the mod page (the file new versions are added to)
+#   variable NEXUS_MOD_ID       the mod's ID from the Nexus API (needed for the changelog)
+# Without NEXUSMODS_API_KEY or NEXUS_FILE_ID the upload is skipped with a warning.
+name: Nexus Mods upload
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version to upload (e.g. 1.0.1)
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to upload (e.g. 1.0.1); the GitHub release vX.Y.Z must exist
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check settings
+        id: cfg
+        env:
+          API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
+          FILE_ID: ${{ vars.NEXUS_FILE_ID }}
+          MOD_ID: ${{ vars.NEXUS_MOD_ID }}
+        run: |
+          if [ -z "$API_KEY" ] || [ -z "$FILE_ID" ]; then
+            echo "::warning::Nexus Mods upload skipped: set the NEXUSMODS_API_KEY secret and the NEXUS_FILE_ID variable."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -z "$MOD_ID" ]; then
+            echo "::warning::NEXUS_MOD_ID is not set, so the version is uploaded without a changelog."
+          fi
+
+      - name: Download the release zip and notes
+        if: steps.cfg.outputs.ready == 'true'
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ inputs.version }}
+        run: |
+          gh release download "v$V" --repo "$GITHUB_REPOSITORY" --pattern "FFW_Scoreboard_v$V.zip"
+          ls -l "FFW_Scoreboard_v$V.zip"
+          gh release view "v$V" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
+          {
+            echo "notes<<NEXUS_NOTES_EOF"
+            cat notes.md
+            echo
+            echo "NEXUS_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload to Nexus Mods
+        if: steps.cfg.outputs.ready == 'true'
+        id: nexus
+        # pinned to the commit of tag v1.0.0-beta.11 (a third-party action that receives the API key)
+        uses: Nexus-Mods/upload-action@98532f7670c27cbecc78fae03fa3e278147827e2
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ vars.NEXUS_FILE_ID }}
+          filename: FFW_Scoreboard_v${{ inputs.version }}.zip
+          version: ${{ inputs.version }}
+          display_name: FFW Scoreboard ${{ inputs.version }}
+          description: In-game scoreboard for Far Far West. Extract into ue4ss\Mods. Requires UE4SS.
+          category: main
+          archive_existing_version: true
+          update_mod_version: true
+          mod_id: ${{ vars.NEXUS_MOD_ID }}
+          changelog: ${{ vars.NEXUS_MOD_ID != '' && steps.rel.outputs.notes || '' }}
+
+      - name: Result
+        if: steps.cfg.outputs.ready == 'true'
+        run: echo "Uploaded FFW Scoreboard ${{ inputs.version }} to Nexus Mods (version id ${{ steps.nexus.outputs.version_id }})."

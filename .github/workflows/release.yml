@@ -1,4 +1,4 @@
-# Builds a release whenever the mod's version number (VERSION in FFW_Scoreboard/Scripts/main.lua) is new.
+# Builds a release (and uploads it to Nexus Mods, see nexus.yml) whenever the mod's version number (VERSION in FFW_Scoreboard/Scripts/main.lua) is new.
 # - New version            -> zip + GitHub release "vX.Y.Z" with the notes from CHANGELOG.md
 # - Same version as an existing release, but the mod files changed -> the run fails (bump the version)
 # - Same version, only docs / tooling changed -> nothing to release
@@ -15,6 +15,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      released: ${{ steps.v.outputs.exists == 'false' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -71,3 +74,12 @@ jobs:
           V=${{ steps.v.outputs.version }}
           gh release create "v$V" "dist/FFW_Scoreboard_v$V.zip" \
             --target "$GITHUB_SHA" --title "FFW Scoreboard $V" --notes-file notes.md
+
+  # a new release also goes to Nexus Mods (skipped with a warning until the Nexus settings are in place)
+  nexus:
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    uses: ./.github/workflows/nexus.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+    secrets: inherit
