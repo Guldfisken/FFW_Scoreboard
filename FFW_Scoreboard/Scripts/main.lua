@@ -171,6 +171,8 @@ local function defaults()
     -- Enemy health (BP_Enemy.Health) is sent to every player; OnRep_health runs on every machine when it changes.
     -- When it reaches 0, the kill goes to the player who hit that enemy last (see the damage feed), so kills per
     -- enemy type are known for everyone, not only for yourself.
+    -- (host only) the Cryptic Train carriages' server-side hit: F_ServerDamages(Damages, DamageType, Causer), see C.lateHooks
+    feedsrv = { names = {}, amount = "none" },
     health = {
       names  = { "OnRep_health" },
       owner  = "/Game/Enemies/BP_Enemy%.BP_Enemy_C:",
@@ -185,9 +187,15 @@ local function defaults()
 
   -- Functions of Blueprints that only load with their mission (bosses). After each map change they are looked up by
   -- exact name for 2 minutes and hooked as soon as they exist.   full function path -> event
+  -- The carriages' F_DamageFeedback only runs on the machine of the player who hit; F_ServerDamages runs on the
+  -- host for every player's hit. So as host you see everyone's train damage, as client only your own.
   C.lateHooks = {
     ["/Game/Enemies/Assets/Cryptic/CrypticTrain/BP_CrypticTrain_Section.BP_CrypticTrain_Section_C:F_DamageFeedback"] = "feedsec",
+    ["/Game/Enemies/Assets/Cryptic/CrypticTrain/BP_CrypticTrain_Section.BP_CrypticTrain_Section_C:F_ServerDamages"] = "feedsrv",
   }
+  -- Debug (C.debug): every function of these classes is logged to trainprobe.log when they appear in a game
+  C.probeClasses = { "BP_Enemy_Cryptic_Train_C", "BP_CrypticTrain_Section_C", "BP_CrypticTrain_Section_Loco_C",
+    "BP_CrypticTrain_Section_Cart_C" }
 
   -- Mission result: Blueprint functions whose lower-case name contains one of these words are hooked; the last one that
   -- fires during a mission decides Victory / Defeat. Check scoreboard.log ("result hooks" / "result event") to see what was found.
@@ -388,7 +396,7 @@ end
 
 ------------------------------------------------------------------ session / stats model
 local Session = nil
-local ResetHitCaches, FlushKills, ReportVanished   -- set in "event handling"
+local ResetHitCaches, FlushKills, ReportVanished, ReportProbe   -- set in "event handling" / start-up
 local Boards = {}      -- latest replicated leaderboard per player name (see 'leaderboard sync')
 local MergeBoards      -- assigned below
 local sessionCounter = 0
@@ -1428,6 +1436,7 @@ local function endSession(reason)
   if MergeBoards and Session then pcall(MergeBoards) end
   if FlushKills then pcall(FlushKills, true) end
   if C.debug and ReportVanished then pcall(ReportVanished) end
+  if C.debug and ReportProbe then pcall(ReportProbe) end
   -- check: kills per enemy type (last hit) next to the game's own kill count, per player
   if Session then
     for name, s in pairs(Session.players) do
@@ -1553,15 +1562,16 @@ local function categoryOf(typeObj) return firstLabel(C.damageCategories, fullNam
 --   enemies: re-read every 10 seconds, and forgotten when the enemy dies (a dead enemy's address can later be
 --            reused by a new enemy); boss / elite is read per enemy, not per class.
 --   causers: kept for 5 seconds (turrets and other spawned actors come and go).
-local enemyCache, enemyCacheN = {}, 0
-local causerCache, causerCacheN = {}, 0
+local enemyCache, causerCache = {}, {}
+Cache.enemyN, Cache.causerN, Cache.lastHitN = 0, 0, 0
 -- Kills per enemy type: who hit each enemy last, and enemies whose health reached 0 (credited half a second later,
 -- because the damage report of the killing blow can arrive just after the health update).
-local lastHit, lastHitN = {}, 0   -- enemy key -> { who, label, t, deadAt, credited }
+local lastHit = {}   -- enemy key -> { who, label, t, deadAt, credited }
 local pendingKills = {}
 ResetHitCaches = function()
-  enemyCache, enemyCacheN, causerCache, causerCacheN = {}, 0, {}, 0
-  lastHit, lastHitN, pendingKills = {}, 0, {}
+  enemyCache, causerCache, lastHit, pendingKills = {}, {}, {}, {}
+  Cache.enemyN, Cache.causerN, Cache.lastHitN = 0, 0, 0
+  Cache.trainServerSeen = false   -- this machine runs the train carriages' F_ServerDamages (= host)
 end
 
 local function enemyInfo(enemy)
@@ -1571,8 +1581,8 @@ local function enemyInfo(enemy)
   if e and now - e.t < 10 then return e end
   e = { t = now, cls = className(enemy), kind = classifyTarget(enemy), label = enemyLabel(enemy) }
   if key then
-    enemyCacheN = enemyCacheN + 1
-    if enemyCacheN > 3000 then enemyCache, enemyCacheN = {}, 1 end
+    Cache.enemyN = Cache.enemyN + 1
+    if Cache.enemyN > 3000 then enemyCache, Cache.enemyN = {}, 1 end
     enemyCache[key] = e
   end
   return e
@@ -1629,8 +1639,8 @@ local function causerInfo(causer)
     if not known then key = nil end
   end
   if key then
-    causerCacheN = causerCacheN + 1
-    if causerCacheN > 2000 then causerCache, causerCacheN = {}, 1 end
+    Cache.causerN = Cache.causerN + 1
+    if Cache.causerN > 2000 then causerCache, Cache.causerN = {}, 1 end
     causerCache[key] = c
   end
   return c
@@ -1651,15 +1661,21 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
   --   F_DamageFeedback_Multicast(Damages, Owner, DamageType, ItemName, Element)
   --   F_Child_DamageFeedback(Hit, Owner, Damages)
   --   F_DamageFeedback(Hit, Owner, Damages, DamageType, Critical, Element, ItemName)   (Cryptic Train sections)
+  --   F_ServerDamages(Damages, DamageType, Causer)   (Cryptic Train sections, runs on the host only)
   local sp = tostring(path)
   local L
-  if sp:find(":F_Child_DamageFeedback$") then L = { amount = 3, dt = nil, item = nil, elem = nil }
-  elseif sp:find(":F_DamageFeedback$") then L = { amount = 3, dt = 4, item = 7, elem = 6 }
-  else L = { amount = 1, dt = 3, item = 4, elem = 5 } end
-  local isChild = L.dt == nil
+  if sp:find(":F_Child_DamageFeedback$") then L = { amount = 3, causer = 2 }
+  elseif sp:find(":F_ServerDamages$") then L = { amount = 1, dt = 2, causer = 3 }
+  elseif sp:find(":F_DamageFeedback$") then L = { amount = 3, dt = 4, item = 7, elem = 6, causer = 2 }
+  else L = { amount = 1, dt = 3, item = 4, elem = 5, causer = 2 } end
   local amount = unwrap(args[L.amount])
   if type(amount) ~= "number" or amount <= 0 then return end
-  local causer = unwrap(args[2])
+  if sp:find(":F_ServerDamages$") then
+    Cache.trainServerSeen = true
+  elseif Cache.trainServerSeen and sp:find("CrypticTrain_Section", 1, true) then
+    return   -- host: the carriages' hits are already counted by F_ServerDamages (for every player)
+  end
+  local causer = unwrap(args[L.causer])
   local ci = causerInfo(causer)
   local ei = enemyInfo(enemy)
   -- tally per function + enemy class (written to the log at the end of a game)
@@ -1698,8 +1714,8 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
     local lh = lastHit[key]
     local now2 = os.clock()
     if not lh or lh.credited then
-      lastHitN = lastHitN + 1
-      if lastHitN > 3000 then lastHit, lastHitN = {}, 1 end
+      Cache.lastHitN = Cache.lastHitN + 1
+      if Cache.lastHitN > 3000 then lastHit, Cache.lastHitN = {}, 1 end
       lh = {}
       lastHit[key] = lh
     end
@@ -1748,9 +1764,9 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
 end
 
 handlers.feedsec = function(...) return handlers.feed(...) end
+handlers.feedsrv = function(...) return handlers.feed(...) end
 
 -- An enemy's health changed (on every machine). At 0 the player who hit it last gets the kill for that enemy type.
-local healthSeenLogged = false
 handlers.health = function(def, selfObj)
   local enemy = selfObj
   if not isValidObj(enemy) then return end
@@ -1766,6 +1782,7 @@ end
 
 -- Debug check (C.debug): enemies a player hit that disappeared from the game without their health reaching 0 here.
 -- If these are many, kills are being missed (e.g. enemies removed before their last health update arrived).
+do
 local vanished = {}   -- player -> { quick = n (within 2 s of the last hit), late = n }
 local function checkVanished()
   local now = os.clock()
@@ -1795,7 +1812,7 @@ FlushKills = function(force)
     if force or now - lh.deadAt >= 0.5 then
       lh.credited = true
       if lh.deadAt - lh.t <= 15 then   -- hit by a player in the last 15 s before it died
-        if not healthSeenLogged then healthSeenLogged = true; log("kills per enemy: from enemy health (OnRep_health) + last hit") end
+        if not Cache.healthSeenLogged then Cache.healthSeenLogged = true; log("kills per enemy: from enemy health (OnRep_health) + last hit") end
         recordEnemy(lh.who, lh.label, 1, 0)
       end
     else
@@ -1803,6 +1820,7 @@ FlushKills = function(force)
     end
   end
   pendingKills = keep
+end
 end
 
 -- difficulty (fallback): BPFL F_ScaleXpWithDifficulty(Difficulty:int) runs at the end of a mission with the real value
@@ -1990,9 +2008,11 @@ local function hookPath(path, fn)
 end
 
 -- hook one function and send its calls to the handlers of the given events
-local RAW_EVENTS = { feed = true, feedsec = true, health = true }   -- handlers that only use `args` (no generic argument sorting)
+local hookEvents
+do
+local RAW_EVENTS = { feed = true, feedsec = true, feedsrv = true, health = true }   -- handlers that only use `args` (no generic argument sorting)
 local EMPTY = setmetatable({}, { __newindex = function() end })
-local function hookEvents(path, evs)
+hookEvents = function(path, evs)
   local sn = shortName(path)
   local raw = true
   for _, ev in ipairs(evs) do if not RAW_EVENTS[ev] then raw = false end end
@@ -2008,6 +2028,7 @@ local function hookEvents(path, evs)
     if not ok then log("handler error in " .. sn .. ": " .. tostring(err)) end
   end)
   if hooked[path] then log(string.format("hooked %s -> %s", path, table.concat(evs, "+"))) end
+end
 end
 
 local function installHooks()
@@ -2910,6 +2931,96 @@ end)
 -- After a map change the mod looks up those few functions by their exact name (cheap) every 2 seconds for
 -- 2 minutes, and hooks them as soon as they exist. (No full function scan: that caused stutters.)
 local scanMap, lateUntil, lateNext = nil, 0, 0
+-- Debug probe (C.debug): when one of C.probeClasses appears in a game, every function of it (and its Blueprint
+-- parents up to BP_Enemy) is listed and hooked; the first calls of each, with their arguments, and a call count per
+-- function go to trainprobe.log. Shows which functions run on this machine and with what (e.g. which player).
+local tryProbe
+do
+local PROBELOG = DIR .. "trainprobe.log"
+local probed, probeCalls, probeTried = {}, {}, 0
+local function probeLog(line)
+  local f = io.open(PROBELOG, "a")
+  if f then f:write(os.date("%H:%M:%S ") .. line .. "\n"); f:close() end
+end
+local function probeArg(v)
+  v = unwrap(v)
+  local t = type(v)
+  if t == "number" or t == "boolean" or t == "string" then return tostring(v) end
+  if isValidObj(v) then
+    local s2 = className(v)
+    if isPlayer(v) then s2 = s2 .. "<player " .. playerName(v) .. ">" end
+    return s2
+  end
+  local str = safe(function() return v:ToString() end)
+  if type(str) == "string" then return '"' .. str .. '"' end
+  return t
+end
+local function probeClass(cls)
+  local cur, depth = cls, 0
+  while isValidObj(cur) and depth < 4 do
+    local cname = fullName(cur):match("([^%.]+)$") or "?"
+    if cname == "BP_Enemy_C" or fullName(cur):find("/Script/", 1, true) then break end
+    local cpath = fullName(cur):match("^%S+%s+(%S+)$")
+    if cpath and not probed[cpath] then
+      probed[cpath] = true
+      local names = {}
+      pcall(function() cur:ForEachFunction(function(fn)
+        local n = fn:GetFName():ToString()
+        local parts = {}
+        pcall(function() fn:ForEachProperty(function(pp)
+          local pn = pp:GetFName():ToString()
+          if not pn:find("^CallFunc_") and not pn:find("^K2Node_") and not pn:find("^Temp_") then
+            parts[#parts + 1] = pn .. ":" .. propClassName(pp)
+          end
+        end) end)
+        names[#names + 1] = n
+        probeLog("fn " .. cpath .. ":" .. n .. "(" .. table.concat(parts, ", ") .. ")")
+      end) end)
+      for _, n in ipairs(names) do
+        local l = n:lower()
+        if not l:find("^executeubergraph") and not l:find("tick") and not l:find("userconstructionscript")
+          and not l:find("timeline") and not l:find("^bndevt") then
+          local fpath = cpath .. ":" .. n
+          pcall(RegisterHook, fpath, function(self, ...)
+            local c = (probeCalls[fpath] or 0) + 1
+            probeCalls[fpath] = c
+            if c <= 5 then
+              local args = { ... }
+              local ap = {}
+              for i = 1, #args do ap[#ap + 1] = "p" .. i .. "=" .. probeArg(args[i]) end
+              probeLog(string.format("call %s #%d self=%s %s", fpath, c, probeArg(self), table.concat(ap, " ")))
+            end
+          end)
+        end
+      end
+      probeLog(string.format("probed %s: %d functions", cpath, #names))
+      log("debug: probing " .. cpath .. " (" .. #names .. " functions, see trainprobe.log)")
+    end
+    cur = safe(function() return cur:GetSuperStruct() end)
+    depth = depth + 1
+  end
+end
+tryProbe = function()
+  if not C.debug then return end
+  for _, cn in ipairs(C.probeClasses or {}) do
+    local o = safe(FindFirstOf, cn)
+    if isValidObj(o) then
+      local cls = safe(function() return o:GetClass() end)
+      if isValidObj(cls) then pcall(probeClass, cls) end
+    end
+  end
+end
+ReportProbe = function()
+  if not next(probeCalls) then return end
+  local list = {}
+  for fpath, c in pairs(probeCalls) do list[#list + 1] = { fpath, c } end
+  table.sort(list, function(a, b) return a[2] > b[2] end)
+  probeLog("--- calls this game (" .. tostring(Session and Session.map) .. ")")
+  for _, e in ipairs(list) do probeLog(string.format("count %6d  %s", e[2], e[1])) end
+  probeCalls = {}
+end
+end
+
 local function tryLateHooks()
   if not hooksDone then return true end
   local allDone = true
@@ -2953,6 +3064,7 @@ LoopAsync(1000, function()
         pcall(pollLoadouts)
         if C.debug and tick % 15 == 0 then pcall(pollJokers) end
         if tick % 15 == 0 then pcall(pollDifficulty) end
+        if C.debug and tick % 6 == 0 then pcall(tryProbe) end
         pcall(MergeBoards)
       end
       if tick % 30 == 0 then autosaveCurrent() end

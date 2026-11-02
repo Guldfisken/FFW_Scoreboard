@@ -72,6 +72,8 @@ The mod only uses information the game sends to **every** player, so the board i
 - **Weapon jokers are shown for yourself only.** They are stored in each player's own save, not synced.
 - **Picked-up jokers** of other players may not be visible when you join someone else's game.
 - **Damage taken and Friendly fire**: as host you see everyone's; when you join you mainly see your own.
+- **Cryptic Train damage**: the train's carriages only report hits to the player who fired. As host you see
+  everyone's train damage; when you join you see your own (teammates show 0 boss damage for the train).
 - The difficulty name mapping (`C.difficultyNames`) has not been verified for every difficulty yet.
 
 ## Files the mod writes (in `Scripts\`)

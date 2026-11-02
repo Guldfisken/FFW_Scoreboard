@@ -7,6 +7,9 @@ All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see 
 - Fixed: kills per enemy type (the "(kills)" numbers in the Enemies table) were only counted for yourself; other
   players always showed (0). They are now counted for every player, whether you host or join: when an enemy's health
   reaches 0, the kill goes to the player who hit it last.
+- Fixed: Cryptic Train damage from teammates was missing. The train's carriages only report hits to the player who
+  fired, so the host now reads them where the server processes them: as host you see everyone's train damage, when
+  you join you see your own.
 - scoreboard.log shows a "kill check" line per player at the end of each game: the kills per enemy type added up,
   next to the game's own kill count.
 
