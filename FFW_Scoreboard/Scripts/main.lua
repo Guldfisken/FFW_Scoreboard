@@ -194,8 +194,9 @@ local function defaults()
     ["/Game/Enemies/Assets/Cryptic/CrypticTrain/BP_CrypticTrain_Section.BP_CrypticTrain_Section_C:F_ServerDamages"] = "feedsrv",
   }
   -- Debug (C.debug): every function of these classes is logged to trainprobe.log when they appear in a game
+  -- (the train, and the player's shield component: who gives a shield to whom)
   C.probeClasses = { "BP_Enemy_Cryptic_Train_C", "BP_CrypticTrain_Section_C", "BP_CrypticTrain_Section_Loco_C",
-    "BP_CrypticTrain_Section_Cart_C" }
+    "BP_CrypticTrain_Section_Cart_C", "AC_PlayerState_Shield_C" }
 
   -- Mission result: Blueprint functions whose lower-case name contains one of these words are hooked; the last one that
   -- fires during a mission decides Victory / Defeat. Check scoreboard.log ("result hooks" / "result event") to see what was found.
