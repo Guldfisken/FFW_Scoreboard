@@ -1759,6 +1759,7 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
   feedTally[tk] = (feedTally[tk] or 0) + amount
   if not ci.pl then
     local cn = ci.cls
+    feedTally["not counted, causer " .. cn] = (feedTally["not counted, causer " .. cn] or 0) + amount
     if not feedNoPlayerLogged[cn] then feedNoPlayerLogged[cn] = true; log("damage feed: causer " .. cn .. " is not a player (ignored)") end
     return
   end
@@ -2270,12 +2271,30 @@ local function mapField(n)
   return nil
 end
 
+local boardMapLast = {}
 local function readBoard(ps)
   local raw, mapped = {}, {}
   local st = safe(function() return ps.playerRuntimeLeaderboardReplicated end)
   if not st then return raw, mapped end
   for _, n in ipairs(listBoardFields()) do
     local v = unwrap(safe(function() return st[n] end))
+    if C.debug and type(v) ~= "number" and (n:find("^itemDamages") or n:find("^itemKills")) then
+      -- debug: per-item maps of the game's own leaderboard (item -> damage / kills)
+      local parts = {}
+      pcall(function() v:ForEach(function(k, val)
+        local kk = unwrap(k); local vv = unwrap(val)
+        local ks = safe(function() return kk:ToString() end) or tostring(kk)
+        parts[#parts + 1] = ks .. "=" .. tostring(vv)
+      end) end)
+      table.sort(parts)
+      local line = table.concat(parts, "  ")
+      local key = tostring(safe(function() return ps:GetFullName() end)) .. n
+      if boardMapLast[key] ~= line then
+        boardMapLast[key] = line
+        log(string.format("debug leaderboard %s.%s: %s", tostring(safe(function() return ps:GetPlayerName():ToString() end)),
+          (n:gsub("_%d+_%x+$", "")), line ~= "" and line:sub(1, 1500) or "(empty or not readable)"))
+      end
+    end
     if type(v) == "number" then
       raw[n] = v
       local stat = mapField(n)
@@ -2815,7 +2834,14 @@ UI.readElements = function()
   local els, parts = {}, {}
   for n = 0, 31 do
     local out = {}
-    local ok = pcall(function() cdo:F_GetElementInfos(n, world, out) end)
+    local ok, err = pcall(function() cdo:F_GetElementInfos(n, world, out) end)
+    if ok and out.Name == nil then
+      -- other calling form: out values as return values
+      local ok2, a, b, c, d, e, f, g = pcall(function() return cdo:F_GetElementInfos(n, world) end)
+      if ok2 then out.Name, out.associatedItem = e, g end
+      if n == 8 then dlog("elements: element 8 returned " .. tostring(a) .. ", " .. tostring(e) .. ", " .. tostring(g)) end
+    end
+    if not ok and n == 8 then log("elements: F_GetElementInfos error: " .. tostring(err)) end
     if ok then
       local nm = describeValue(out.Name) or ""
       local it = describeValue(out.associatedItem) or ""
