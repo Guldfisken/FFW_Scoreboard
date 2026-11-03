@@ -2,8 +2,10 @@
 
 All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see [RELEASING.md](RELEASING.md)).
 
-## 1.0.1 – 2026-11-02
+## 1.1.0 – 2026-11-03
 
+- Added: Cactus as a damage type (Damage types table). The mod now reads the game's own list of elements, so
+  elemental damage is recognised by the game's names.
 - Fixed: kills per enemy type (the "(kills)" numbers in the Enemies table) were only counted for yourself; other
   players always showed (0). They are now counted for every player, whether you host or join: when an enemy's health
   reaches 0, the kill goes to the player who hit it last.

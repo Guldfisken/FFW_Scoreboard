@@ -3,7 +3,7 @@
 -- saves each finished game and lets you browse past games. https://github.com/Guldfisken/FFW_Scoreboard
 -- License: GPL-3.0
 
-local VERSION = "1.0.1"
+local VERSION = "1.1.0"
 
 local UEHelpers_ok, UEHelpers = pcall(require, "UEHelpers")
 
@@ -67,7 +67,7 @@ local function defaults()
   C.eliteProps = { "isElite", "bIsElite", "elite" }                      -- isElite exists on BP_Enemy_C [VERIFIED]
 
   -- Damage types that are always listed (even with 0 damage). Others appear when they have damage.
-  C.alwaysShowTypes = { "Weapon", "Spells", "Fire", "Acid", "Elec", "Frost", "Voodoo" }
+  C.alwaysShowTypes = { "Weapon", "Spells", "Fire", "Acid", "Elec", "Frost", "Voodoo", "Cactus" }
   -- Damage from an actor whose class name contains one of these (and that is owned by a player) counts as "Spells".
   -- Check the "damage feed item/element/causer/type" lines in scoreboard.log for the real class names.
   C.spellCauserPatterns = { "Spell", "Turret", "Decoy", "Totem" }
@@ -102,7 +102,7 @@ local function defaults()
     { "Weapon", "Bullets" }, { "Weapon", "Melee" },   -- guns and melee are one group ("Weapon")
     { "Fire", "Fire" }, { "Acid", "Acid" }, { "Elec", "Elec" },
     { "Frost", "Frost" }, { "Frost", "Ice" }, { "Frost", "Cold" },
-    { "Voodoo", "Voodoo" }, { "Voodoo", "Curse" },
+    { "Voodoo", "Voodoo" }, { "Voodoo", "Curse" }, { "Cactus", "Cactus" },
     { "Explosive", "Explosion" }, { "Shroom", "Shroom" },
     { "Mount", "Mount" }, { "Environment", "Enviro" },
   }
@@ -1743,7 +1743,13 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
   if cat == "Weapon" and item then
     -- the damage type class is not readable here, but elemental damage carries the element as item name
     local byItem = firstLabel(C.damageCategories, item, nil)
-    if byItem then cat = byItem end
+    if byItem then
+      cat = byItem
+    else
+      -- the game's own element list (UI.elements): an element's damage is reported under its item name
+      local el = UI.elements and type(unwrap(args[L.elem or 0])) == "number" and UI.elements[unwrap(args[L.elem])]
+      if el and el.item == item and el.name ~= "" then cat = firstLabel(C.damageCategories, el.name, el.name) end
+    end
   end
   -- spells: hits that carry an element but no item name (seen in the Saloon: Ice Glaze = no item, element 15),
   -- or that come from a spell actor (turret, decoy ...) owned by the player
@@ -2708,6 +2714,35 @@ end
 -- Difficulty: properties with "difficult" in their name on the game state / game instance. All candidates are logged
 -- once per map; the first readable one is shown in the title line.
 local difficultyMap = nil
+-- The game's elements (Fire, Acid, Cactus ...): BPFL F_GetElementInfos(Element, WorldContext, out ... Name,
+-- associatedItem). Read once; the damage feed reports an element's damage under its associatedItem ("itemCactus").
+local elementTries = 0
+UI.readElements = function()
+  if UI.elements or elementTries >= 5 then return end
+  elementTries = elementTries + 1
+  local cdo = safe(StaticFindObject, "/Game/Gamework/BPFL_FunctionLibrary.Default__BPFL_FunctionLibrary_C")
+  local world = UEHelpers_ok and safe(UEHelpers.GetWorld) or nil
+  if not isValidObj(cdo) or not isValidObj(world) then return end
+  local els, parts = {}, {}
+  for n = 0, 31 do
+    local out = {}
+    local ok = pcall(function() cdo:F_GetElementInfos(n, world, out) end)
+    if ok then
+      local nm = describeValue(out.Name) or ""
+      local it = describeValue(out.associatedItem) or ""
+      it = it:gsub("^item", "")
+      if it == "None" then it = "" end
+      if nm ~= "" and nm ~= "None" then
+        els[n] = { name = nm, item = it }
+        parts[#parts + 1] = n .. "=" .. nm .. (it ~= "" and ("(" .. it .. ")") or "")
+      end
+    end
+  end
+  if #parts == 0 then log("elements: F_GetElementInfos gave nothing (try " .. elementTries .. ")"); return end
+  UI.elements = els
+  log("elements: " .. table.concat(parts, "  "))
+end
+
 pollDifficulty = function()
   if not Session or isLobby(Session.map) or difficultyMap == Session.map then return end
   -- 1) the game's own getter: F_GetDifficulty(out difficulty:int), used by the difficulty curves (game state)
@@ -3118,6 +3153,7 @@ LoopAsync(1000, function()
         pcall(pollLoadouts)
         if C.debug and tick % 15 == 0 then pcall(pollJokers) end
         if tick % 15 == 0 then pcall(pollDifficulty) end
+        if tick % 15 == 0 and UI.readElements then pcall(UI.readElements) end
         if C.debug and tick % 6 == 0 then pcall(tryProbe) end
         pcall(MergeBoards)
       end
