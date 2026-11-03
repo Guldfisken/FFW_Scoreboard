@@ -67,7 +67,9 @@ local function defaults()
   C.eliteProps = { "isElite", "bIsElite", "elite" }                      -- isElite exists on BP_Enemy_C [VERIFIED]
 
   -- Damage types that are always listed (even with 0 damage). Others appear when they have damage.
-  C.alwaysShowTypes = { "Weapon", "Spells", "Fire", "Acid", "Elec" }
+  C.alwaysShowTypes = { "Weapon", "Spells", "Fire", "Elec", "Acid" }
+  -- order of the elements in the Damage types table (as in the game's spell selection); others follow
+  C.elementOrder = { "Fire", "Elec", "Acid", "Voodoo", "Cactus", "Frost" }
   -- Split Weapon into Primary / Secondary / Other weapon (by the item named with each hit). Off: some weapon damage
   -- (e.g. the joker "Scrub Hit", some Bow hits) comes without a weapon name, so the split would not be exact.
   C.splitWeapons = false
@@ -1278,10 +1280,19 @@ local function buildSections(ds)
   local function want(l) return always[l] or (totals[l] or 0) > 0 end
   -- weapons, then spells with their split by element, then the element effects (fire, acid, elec ...), then the rest
   for _, l in ipairs({ "Weapon", "Primary", "Secondary", "Other weapon", "Spells" }) do if want(l) then addLabel(l) end end
+  local rank = {}
+  for i, l in ipairs(C.elementOrder or {}) do rank[l] = i end
+  local function byElement(a, b, ta, tb)
+    local ra, rb = rank[ta] or 999, rank[tb] or 999
+    if ra ~= rb then return ra < rb end
+    return totals[a] > totals[b]
+  end
   local subs = {}
   for l, v in pairs(totals) do if v > 0 and l:find("^Spells|") then subs[#subs + 1] = l end end
-  table.sort(subs, function(a, b) return totals[a] > totals[b] end)
+  table.sort(subs, function(a, b) return byElement(a, b, a:sub(8), b:sub(8)) end)
   for _, l in ipairs(subs) do addLabel(l) end
+  -- element effects in the game's element order (always-listed ones, or with damage)
+  for _, l in ipairs(C.elementOrder or {}) do if want(l) then addLabel(l) end end
   for _, l in ipairs(C.alwaysShowTypes or {}) do if want(l) and l ~= "Weapon" then addLabel(l) end end
   for _, e in ipairs(C.damageCategories or {}) do if (totals[e[1]] or 0) > 0 then addLabel(e[1]) end end
   if (totals.Other or 0) > 0 then addLabel("Other") end
