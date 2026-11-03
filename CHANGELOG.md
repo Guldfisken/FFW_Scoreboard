@@ -4,39 +4,21 @@ All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see 
 
 ## 1.1.0 – 2026-11-03
 
-- Changed: the Damage types table splits **Spells** by element in indented rows, e.g. a cactus spell such as
-  Pistolero under Spells → Cactus. Fire, Elec and Acid stay as their own rows (burning, corrosion ...). Elements are
-  listed in the game's order (Fire, Elec, Acid, Voodoo, Cactus, Frost). Rows without damage are hidden except Weapon,
-  Spells, Fire, Elec and Acid.
-- Added: the mod reads the game's own list of elements, so elemental damage (including Cactus) is recognised by the
-  game's names.
-- Fixed: a possible crash a few seconds after entering a map (seen in the Saloon). The mod no longer scans all
-  12,000+ game functions to find the ones it needs; it looks them up by their exact names once the map has been
-  loaded for a while. This also removes a short hitch at start-up.
-- Fixed: Damage taken was only shown for yourself when you joined someone else's game (teammates showed 0). It now
-  counts the health each player loses, which the game sends to every player, so it works the same for host and
-  clients. Damage absorbed by a shield is not included.
-- Fixed: kills per enemy type (the "(kills)" numbers in the Enemies table) were only counted for yourself; other
-  players always showed (0). They are now counted for other players too: when an enemy's health reaches 0, the kill
-  goes to the player who hit it last. When you join someone else's game, part of your teammates' hits do not reach
-  you, so their damage and kills can be lower than in the game's own Kills column (see Limitations in the README).
-- Fixed: Cryptic Train damage from teammates was missing. The train's carriages only report hits to the player who
-  fired, so the host now reads them where the server processes them: as host you see everyone's train damage, when
-  you join you see your own.
-- scoreboard.log shows a "kill check" line per player at the end of each game: the kills per enemy type added up,
-  next to the game's own kill count.
+- Changed: the Damage types table splits **Spells** by element in indented rows, e.g. a cactus spell such as Pistolero under Spells → Cactus. Fire, Elec and Acid stay as their own rows (burning, corrosion ...). Elements are listed in the game's order (Fire, Elec, Acid, Voodoo, Cactus, Frost). Rows without damage are hidden except Weapon, Spells, Fire, Elec and Acid.
+- Added: the mod reads the game's own list of elements, so elemental damage (including Cactus) is recognised by the game's names.
+- Fixed: a possible crash a few seconds after entering a map (seen in the Saloon). The mod no longer scans all 12,000+ game functions to find the ones it needs; it looks them up by their exact names once the map has been loaded for a while. This also removes a short hitch at start-up.
+- Fixed: Damage taken was only shown for yourself when you joined someone else's game (teammates showed 0). It now counts the health each player loses, which the game sends to every player, so it works the same for host and clients. Damage absorbed by a shield is not included.
+- Fixed: kills per enemy type (the "(kills)" numbers in the Enemies table) were only counted for yourself; other players always showed (0). They are now counted for other players too: when an enemy's health reaches 0, the kill goes to the player who hit it last. When you join someone else's game, part of your teammates' hits do not reach you, so their damage and kills can be lower than in the game's own Kills column (see Limitations in the README).
+- Fixed: Cryptic Train damage from teammates was missing. The train's carriages only report hits to the player who fired, so the host now reads them where the server processes them: as host you see everyone's train damage, when you join you see your own.
+- scoreboard.log shows a "kill check" line per player at the end of each game: the kills per enemy type added up, next to the game's own kill count.
 
 ## 1.0.0 – 2026-11-02
 First public release.
 
 - Live scoreboard (F6) and saved games (F8), styled like the game's menus, scrollable with Up / Down.
-- Per player: kills, damage, boss and elite damage, damage taken, deaths, revives, self and team heal, shield
-  generated and friendly fire. Works the same whether you host or join, and other players do not need the mod.
-- Damage types (Weapon, Spells, Fire, Acid, Elec, Frost, Voodoo) and damage / kills per enemy type, with bosses
-  such as the Cryptic Train and the Halloween boss on their own line.
-- Loadout: hero jokers, primary and secondary weapon (with your own weapon jokers), utility, spells and the jokers
-  picked up during the mission, coloured by rarity.
+- Per player: kills, damage, boss and elite damage, damage taken, deaths, revives, self and team heal, shield generated and friendly fire. Works the same whether you host or join, and other players do not need the mod.
+- Damage types (Weapon, Spells, Fire, Acid, Elec, Frost, Voodoo) and damage / kills per enemy type, with bosses such as the Cryptic Train and the Halloween boss on their own line.
+- Loadout: hero jokers, primary and secondary weapon (with your own weapon jokers), utility, spells and the jokers picked up during the mission, coloured by rarity.
 - Every finished game is saved with map, difficulty, length and Victory / Defeat.
-- `config.lua` holds only your settings and can be kept when updating. New enemies, bosses and damage types can be
-  named there (`C.extraEnemyTypes` ...) without waiting for an update.
+- `config.lua` holds only your settings and can be kept when updating. New enemies, bosses and damage types can be named there (`C.extraEnemyTypes` ...) without waiting for an update.
 - Debug mode (`C.debug = true`) with extra logging and F9 discovery, for checking the mod after a game update.

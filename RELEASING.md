@@ -18,6 +18,7 @@ new version: the zip would be identical.
 
 1. Bump `VERSION` at the top of `FFW_Scoreboard/Scripts/main.lua`.
 2. Add a section at the top of `CHANGELOG.md`: `## X.Y.Z – YYYY-MM-DD` with what changed, written for players.
+   One line per entry (`- ...`, no line breaks inside an entry): Nexus Mods takes the changelog one line per entry.
 3. Commit (version and changelog in the same commit as the change) and push.
 
 ## What happens on push

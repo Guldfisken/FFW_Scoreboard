@@ -57,10 +57,12 @@ jobs:
           gh release download "v$V" --repo "$GITHUB_REPOSITORY" --pattern "FFW_Scoreboard_v$V.zip"
           ls -l "FFW_Scoreboard_v$V.zip"
           gh release view "v$V" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
+          # Nexus changelog = one plain line per entry: no empty lines, no "- " bullets, no **bold** or `code` marks
+          grep -v '^[[:space:]]*$' notes.md | sed -E 's/^[-*][[:space:]]+//; s/\*\*//g; s/`//g' > nexus_notes.txt
+          cat nexus_notes.txt
           {
             echo "notes<<NEXUS_NOTES_EOF"
-            cat notes.md
-            echo
+            cat nexus_notes.txt
             echo "NEXUS_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
