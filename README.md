@@ -11,8 +11,8 @@ It works the same whether you host or join, and the other players do **not** nee
 - **Overview** per player: Kills, Damage, Boss damage, Elite damage, Damage taken, Deaths, Revives, Self heal,
   Team heal, Shield generated, and Friendly fire (only shown when someone hit a teammate). The best value in each
   column is highlighted.
-- **Damage types**: Primary and Secondary weapon (plus "Other weapon" for melee and the like), Spells split by
-  element (e.g. Cactus, Fire), and the elemental effects Fire, Acid and Elec (plus any other type that dealt damage).
+- **Damage types**: Weapon, Spells split by element (e.g. Cactus, Fire), and the elemental effects Fire, Acid and
+  Elec (plus any other type that dealt damage).
 - **Enemies**: damage and kills per enemy type (bosses such as the Cryptic Train and the Halloween boss get their own line).
 - **Loadout**: hero jokers, primary and secondary weapon (with their jokers for yourself), utility, spells, and the
   jokers picked up during the mission (duplicates shown as `x2`, `x3` ...). Jokers are coloured by rarity.
@@ -63,9 +63,9 @@ The mod only uses information the game sends to **every** player, so the board i
   mid-game, these are totals for the whole game.
 - **Damage types** are based on the item name and element the game reports with each hit, using the game's own list
   of elements:
-  - **Primary / Secondary**: direct hits of the weapon in that slot of the player's loadout. Other items (melee,
-    hero ability ...) are "Other weapon". Effects the game reports under the weapon's name (for example the minigun
-    joker "Scrub Hit") count for that weapon.
+  - **Weapon**: hits of a player's weapons, melee and hero ability, including joker effects such as "Scrub Hit".
+    It is not split into primary and secondary weapon: some weapon damage (such as "Scrub Hit") is reported without
+    the weapon's name.
   - **Spells**: damage without a weapon item. The indented rows below it split it by the spell's element (a cactus
     spell such as Pistolero shows under Spells → Cactus).
   - **Fire, Acid, Elec**: damage the game reports under the element itself, such as burning and corrosion ticks.

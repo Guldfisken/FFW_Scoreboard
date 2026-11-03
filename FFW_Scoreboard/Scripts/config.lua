@@ -28,7 +28,7 @@ C.backgroundOpacity = 0.6   -- dark panel behind the table in the "minimal" styl
 -- C.borderTint = { 1, 0.6, 0.2, 1 }   -- recolour the frame (r, g, b, a from 0 to 1)
 
 ------------------------------------------------------------------ tables
-C.alwaysShowTypes = { "Primary", "Secondary", "Spells", "Fire", "Acid", "Elec" } -- always listed; others appear when they have damage
+C.alwaysShowTypes = { "Weapon", "Spells", "Fire", "Acid", "Elec" } -- always listed; others appear when they have damage
 C.maxEnemyRows    = nil     -- rows in the Enemies table; nil = all
 C.jokersPerRow    = 6       -- jokers per line in the Loadout table
 C.showOwnWeaponJokers = true -- show the jokers on your own weapons (other players' are not available)

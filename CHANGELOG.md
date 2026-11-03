@@ -4,10 +4,9 @@ All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see 
 
 ## 1.1.0 – 2026-11-03
 
-- Changed: the Damage types table splits Weapon into **Primary** and **Secondary** (plus "Other weapon" for melee and
-  the like), and splits **Spells** by element in indented rows, e.g. a cactus spell such as Pistolero under
-  Spells → Cactus. Fire, Acid and Elec stay as their own rows (burning, corrosion ...). Rows without damage are hidden
-  except Primary, Secondary, Spells, Fire, Acid and Elec. Games saved earlier keep their single Weapon row.
+- Changed: the Damage types table splits **Spells** by element in indented rows, e.g. a cactus spell such as
+  Pistolero under Spells → Cactus. Fire, Acid and Elec stay as their own rows (burning, corrosion ...). Rows without
+  damage are hidden except Weapon, Spells, Fire, Acid and Elec.
 - Added: the mod reads the game's own list of elements, so elemental damage (including Cactus) is recognised by the
   game's names.
 - Fixed: a possible crash a few seconds after entering a map (seen in the Saloon). The mod no longer scans all

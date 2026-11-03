@@ -67,7 +67,10 @@ local function defaults()
   C.eliteProps = { "isElite", "bIsElite", "elite" }                      -- isElite exists on BP_Enemy_C [VERIFIED]
 
   -- Damage types that are always listed (even with 0 damage). Others appear when they have damage.
-  C.alwaysShowTypes = { "Primary", "Secondary", "Spells", "Fire", "Acid", "Elec" }
+  C.alwaysShowTypes = { "Weapon", "Spells", "Fire", "Acid", "Elec" }
+  -- Split Weapon into Primary / Secondary / Other weapon (by the item named with each hit). Off: some weapon damage
+  -- (e.g. the joker "Scrub Hit", some Bow hits) comes without a weapon name, so the split would not be exact.
+  C.splitWeapons = false
   -- Damage from an actor whose class name contains one of these (and that is owned by a player) counts as "Spells".
   -- Check the "damage feed item/element/causer/type" lines in scoreboard.log for the real class names.
   C.spellCauserPatterns = { "Spell", "Turret", "Decoy", "Totem" }
@@ -1119,7 +1122,7 @@ local function splitCat(s, lo)
   if not s.wdw and not s.spe then return cat end
   local out = {}
   for k, v in pairs(cat) do out[k] = v end
-  if s.wdw and (out.Weapon or 0) > 0 then
+  if C.splitWeapons and s.wdw and (out.Weapon or 0) > 0 then
     local p, q = normItem(lo and lo.Primary), normItem(lo and lo.Secondary)
     if p ~= "" or q ~= "" then
       local pd, sd = 0, 0
@@ -1178,7 +1181,15 @@ local function datasetOfGame(g)
       eliteDamage = tonumber(r[5]), taken = tonumber(r[6]), revives = tonumber(r[7]),
       deaths = pb.misc.deaths or 0, selfHeal = pb.misc.selfHeal or 0, teamHeal = pb.misc.teamHeal or 0,
       ff = pb.misc.ff or 0, shield = pb.misc.shield or 0,
-      cat = normalizeLabels(pb.cat), ek = normalizeLabels(pb.ek), ed = normalizeLabels(pb.ed) }
+      cat = (function()
+        local c = normalizeLabels(pb.cat)
+        if not C.splitWeapons then   -- games saved with Primary / Secondary: shown as one Weapon row again
+          for _, k in ipairs({ "Primary", "Secondary", "Other weapon" }) do
+            if c[k] then c.Weapon = (c.Weapon or 0) + c[k]; c[k] = nil end
+          end
+        end
+        return c
+      end)(), ek = normalizeLabels(pb.ek), ed = normalizeLabels(pb.ed) }
   end
   return ds
 end
@@ -1259,7 +1270,7 @@ local function buildSections(ds)
   local always = {}
   for _, l in ipairs(C.alwaysShowTypes or {}) do
     if l == "Weapon" or l == "Primary" or l == "Secondary" then
-      if split then always.Primary = true; always.Secondary = true else always.Weapon = true end
+      if split and C.splitWeapons then always.Primary = true; always.Secondary = true else always.Weapon = true end
     else
       always[l] = true
     end
