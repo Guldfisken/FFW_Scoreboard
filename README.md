@@ -78,6 +78,10 @@ The mod only uses information the game sends to **every** player, so the board i
 
 Most numbers are the same for everyone in the game. These are not:
 
+- **When you join someone else's game, your teammates' damage and kills can be too low.** Part of their hits reach
+  your game without saying who dealt them, so they cannot be counted. The Kills column itself comes from the game's
+  own leaderboard and is always right; the damage and the kills per enemy type can be lower. As host you see
+  everyone's.
 - **Cryptic Train boss: teammates' damage is only tracked when you host.** The train's carriages only report hits
   to the player who fired and to the host. When you join someone else's game, you see your own train damage, and
   your teammates show 0 boss damage for the train.

@@ -14,3 +14,7 @@ desktop.ini
 
 # local release builds
 dist/
+
+# screenshots: only the anonymised ones (*-anon.png) may be committed
+nexus/media/*
+!nexus/media/*-anon.png

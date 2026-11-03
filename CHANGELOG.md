@@ -5,8 +5,9 @@ All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see 
 ## 1.1.0 – 2026-11-03
 
 - Changed: the Damage types table splits **Spells** by element in indented rows, e.g. a cactus spell such as
-  Pistolero under Spells → Cactus. Fire, Acid and Elec stay as their own rows (burning, corrosion ...). Rows without
-  damage are hidden except Weapon, Spells, Fire, Acid and Elec.
+  Pistolero under Spells → Cactus. Fire, Elec and Acid stay as their own rows (burning, corrosion ...). Elements are
+  listed in the game's order (Fire, Elec, Acid, Voodoo, Cactus, Frost). Rows without damage are hidden except Weapon,
+  Spells, Fire, Elec and Acid.
 - Added: the mod reads the game's own list of elements, so elemental damage (including Cactus) is recognised by the
   game's names.
 - Fixed: a possible crash a few seconds after entering a map (seen in the Saloon). The mod no longer scans all
@@ -16,8 +17,9 @@ All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see 
   counts the health each player loses, which the game sends to every player, so it works the same for host and
   clients. Damage absorbed by a shield is not included.
 - Fixed: kills per enemy type (the "(kills)" numbers in the Enemies table) were only counted for yourself; other
-  players always showed (0). They are now counted for every player, whether you host or join: when an enemy's health
-  reaches 0, the kill goes to the player who hit it last.
+  players always showed (0). They are now counted for other players too: when an enemy's health reaches 0, the kill
+  goes to the player who hit it last. When you join someone else's game, part of your teammates' hits do not reach
+  you, so their damage and kills can be lower than in the game's own Kills column (see Limitations in the README).
 - Fixed: Cryptic Train damage from teammates was missing. The train's carriages only report hits to the player who
   fired, so the host now reads them where the server processes them: as host you see everyone's train damage, when
   you join you see your own.
