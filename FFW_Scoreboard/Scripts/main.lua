@@ -2913,13 +2913,28 @@ UI.readElements = function()
   if not isValidObj(cdo) or not isValidObj(world) then return end
   local els, parts = {}, {}
   for n = 0, 31 do
+    -- F_GetElementInfos(Element, WorldContext, out Color, DamagesColor, Material, NiagaraSystem, Name, Icon,
+    -- associatedItem): every parameter must be passed; each out parameter gets its own table
+    local o = { {}, {}, {}, {}, {}, {}, {} }
+    local ok, err = pcall(function() cdo:F_GetElementInfos(n, world, o[1], o[2], o[3], o[4], o[5], o[6], o[7]) end)
+    local function pick(t, key)
+      if type(t) ~= "table" then return t end
+      local v = t[key]
+      if v == nil then v = t[key:lower()] end
+      if v == nil then v = t[1] end
+      if v == nil then local _, x = next(t); v = x end
+      return v
+    end
     local out = {}
-    local ok, err = pcall(function() cdo:F_GetElementInfos(n, world, out) end)
-    if ok and out.Name == nil then
-      -- other calling form: out values as return values
-      local ok2, a, b, c, d, e, f, g = pcall(function() return cdo:F_GetElementInfos(n, world) end)
-      if ok2 then out.Name, out.associatedItem = e, g end
-      if n == 8 then dlog("elements: element 8 returned " .. tostring(a) .. ", " .. tostring(e) .. ", " .. tostring(g)) end
+    if ok then out.Name, out.associatedItem = pick(o[5], "Name"), pick(o[7], "associatedItem") end
+    if C.debug and n == 8 then
+      local keys = {}
+      for i, t in ipairs(o) do
+        local ks = {}
+        for k in pairs(t) do ks[#ks + 1] = tostring(k) end
+        keys[#keys + 1] = i .. ":" .. table.concat(ks, "/")
+      end
+      dlog("elements: element 8 out tables " .. table.concat(keys, " ") .. " ok=" .. tostring(ok))
     end
     if not ok and n == 8 then log("elements: F_GetElementInfos error: " .. tostring(err)) end
     if ok then
