@@ -2949,11 +2949,20 @@ UI.readElements = function()
     end
     if not ok and n == 8 then log("elements: F_GetElementInfos error: " .. tostring(err)) end
     if ok then
-      local nm = describeValue(out.Name) or ""
-      local it = describeValue(out.associatedItem) or ""
-      it = it:gsub("^item", "")
+      -- the name is game text (FText): read it with ToString, not as an object (that gives "?")
+      local function text(v)
+        v = unwrap(v)
+        if type(v) == "string" then return v end
+        local t = safe(function() return v:ToString() end)
+        if type(t) == "string" then return t end
+        return ""
+      end
+      local nm = text(out.Name)
+      local it = text(out.associatedItem):gsub("^item", "")
       if it == "None" then it = "" end
-      if nm ~= "" and nm ~= "None" then
+      if nm == "None" or nm == "?" then nm = "" end
+      if nm == "" then nm = it end   -- no display name: the item name the damage is reported under (Cactus, Ice ...)
+      if nm ~= "" then
         els[n] = { name = nm, item = it }
         parts[#parts + 1] = n .. "=" .. nm .. (it ~= "" and ("(" .. it .. ")") or "")
       end
