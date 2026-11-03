@@ -10,6 +10,9 @@ All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see 
   except Primary, Secondary, Spells, Fire, Acid and Elec. Games saved earlier keep their single Weapon row.
 - Added: the mod reads the game's own list of elements, so elemental damage (including Cactus) is recognised by the
   game's names.
+- Fixed: a possible crash a few seconds after entering a map (seen in the Saloon). The mod no longer scans all
+  12,000+ game functions to find the ones it needs; it looks them up by their exact names once the map has been
+  loaded for a while. This also removes a short hitch at start-up.
 - Fixed: Damage taken was only shown for yourself when you joined someone else's game (teammates showed 0). It now
   counts the health each player loses, which the game sends to every player, so it works the same for host and
   clients. Damage absorbed by a shield is not included.

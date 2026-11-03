@@ -126,6 +126,9 @@ like). `scoreboard.log` then gets more detail, and **F9** writes `discovery.txt`
 relevant) and `classdump.txt` (functions and fields of the main classes). `C.learn = true` also logs the arguments
 of those functions to `learn.log`. Turn both off again for normal play.
 
+The mod hooks the game functions it needs by their exact names (listed in `main.lua`, `C.hookPaths`). If a game update
+renames one, the matching numbers stay empty; `discovery.txt` (F9 in debug mode) helps to find the new name.
+
 ## Reporting a problem
 
 Open an issue and attach `Scripts\scoreboard.log` and, if the game crashed, `ue4ss\UE4SS.log`.

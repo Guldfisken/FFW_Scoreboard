@@ -186,6 +186,8 @@ local function defaults()
       owner  = "/Game/Enemies/BP_Enemy%.BP_Enemy_C:",
       amount = "none",
     },
+    -- Mission result (exact paths in C.hookPaths): F_IsGameVictory(out Victory) runs at the end of every mission
+    result = { names = {}, amount = "none" },
     -- Difficulty (fallback, end of mission): BPFL F_ScaleXpWithDifficulty(Difficulty:int)
     difficulty = {
       names  = { "F_ScaleXpWithDifficulty" },
@@ -201,6 +203,29 @@ local function defaults()
     ["/Game/Enemies/Assets/Cryptic/CrypticTrain/BP_CrypticTrain_Section.BP_CrypticTrain_Section_C:F_DamageFeedback"] = "feedsec",
     ["/Game/Enemies/Assets/Cryptic/CrypticTrain/BP_CrypticTrain_Section.BP_CrypticTrain_Section_C:F_ServerDamages"] = "feedsrv",
   }
+  -- The game functions the mod hooks, by exact path. They are looked up by name once a map has been loaded for a
+  -- while (and again after every map change, for classes that only load with a mission). No scan of all game
+  -- functions: that scan could crash the game when it ran while a map was still loading.
+  -- After a game update, debug mode (F9 discovery.txt) or C.scanHooks = true helps to find renamed functions.
+  C.hookPaths = {
+    ["/Game/Enemies/BP_Enemy.BP_Enemy_C:F_DamageFeedback_Multicast"] = "feed",
+    ["/Game/Enemies/BP_Enemy.BP_Enemy_C:F_Child_DamageFeedback"] = "feed",
+    ["/Game/Enemies/BP_Enemy_Cryptic_Kamikaze.BP_Enemy_Cryptic_Kamikaze_C:F_Child_DamageFeedback"] = "feed",
+    ["/Game/Enemies/BP_Enemy_Cryptic_Train.BP_Enemy_Cryptic_Train_C:F_DamageFeedback_Multicast"] = "feed",
+    ["/Game/Enemies/BP_Enemy.BP_Enemy_C:OnRep_health"] = "health",
+    ["/Game/Enemies/BP_Enemy.BP_Enemy_C:F_IncrementLeaderboardKillStats"] = "kill",
+    ["/Game/Player/BP_PlayerState.BP_PlayerState_C:F_TriggerOnKillTweaks"] = "kill",
+    ["/Game/Player/BP_PlayerState.BP_PlayerState_C:F_TriggerOnKillTweaks_Client"] = "kill",
+    ["/Game/Player/BP_PlayerState.BP_PlayerState_C:F_LeaderboardStats_AddDeath"] = "death",
+    ["/Game/Player/BP_PlayerState.BP_PlayerState_C:F_LeaderboardStats_AddRevive"] = "revive",
+    ["/Game/Player/BP_PlayerState.BP_PlayerState_C:OnRep_playerHeal"] = "hp",
+    ["/Game/Player/BP_Player.BP_Player_C:F_ServerDamages"] = "taken",
+    ["/Game/Player/BP_Player.BP_Player_C:F_PlayerReceiveDamagesFeedback"] = "taken",
+    ["/Game/Gamework/BPFL_FunctionLibrary.BPFL_FunctionLibrary_C:F_ScaleXpWithDifficulty"] = "difficulty",
+    ["/Game/Gamework/BPFL_FunctionLibrary.BPFL_FunctionLibrary_C:F_IsGameVictory"] = "result",
+    ["/Game/Interfaces/Leaderboard/UI_Leaderboard.UI_Leaderboard_C:F_AdjustVictoryScreen"] = "result",
+  }
+  C.scanHooks = false   -- true = the old way: scan all game functions for C.events names (slower, can crash on loads)
   -- Debug (C.debug): every function of these classes is logged to trainprobe.log when they appear in a game
   -- (the train, and the player's shield component: who gives a shield to whom)
   C.probeClasses = { "BP_Enemy_Cryptic_Train_C", "BP_CrypticTrain_Section_C", "BP_CrypticTrain_Section_Loco_C",
@@ -242,7 +267,7 @@ for _, k in ipairs({
   "backgroundOpacity", "useGameTextures", "textures", "borderTint", "borderMarginX", "borderMarginY", "borderOutset",
   "scrollStep", "screenHeight", "alwaysShowTypes", "maxEnemyRows", "difficultyNames", "displayNames",
   "jokerRarityColors", "jokersPerRow", "showOwnWeaponJokers", "debug", "learn", "dumpClassesOnStart",
-  "startupQuietSeconds", "hookDelayAfterMapChange", "pollDelayAfterMapChange",
+  "startupQuietSeconds", "hookDelayAfterMapChange", "pollDelayAfterMapChange", "scanHooks",
 }) do USER_KEYS[k] = true end
 -- lists in config.lua that are ADDED in front of the built-in ones (so they win: first match counts)
 local EXTRA_KEYS = { extraEnemyTypes = "enemyTypes", extraBossPatterns = "bossPatterns",
@@ -2127,6 +2152,32 @@ end
 
 local hooked = {}
 local resultSeen = 0
+-- Mission result: a question such as F_IsGameVictory(out Victory) decides (the hook runs after the function, so the
+-- out value is set); other result functions only count by their name, while no answer has been seen.
+handlers.result = function(def, selfObj, nums, objs, bools, path, args)
+  if not Session or isLobby(Session.map) then return end
+  local sn = tostring(path):match(":([^:]+)$") or "?"
+  local kind = (sn:lower():find("defeat") or sn:lower():find("gameover")) and "Defeat" or "Victory"
+  local answer
+  if sn:find("^F_Is") or sn:find("^Is") then
+    for i = 1, (args and args.n or 0) do
+      local v = unwrap(args[i])
+      if type(v) == "boolean" then answer = v; break end
+    end
+  end
+  local res
+  if answer ~= nil then
+    res = (answer == (kind == "Victory")) and "Victory" or "Defeat"
+    Session.resultSure = true
+  elseif not Session.resultSure then
+    res = kind
+  end
+  resultSeen = resultSeen + 1
+  if resultSeen <= 12 or (res and res ~= Session.result) then
+    log(string.format("result event: %s%s -> %s", sn, answer ~= nil and (" = " .. tostring(answer)) or "", tostring(res or Session.result)))
+  end
+  if res then Session.result = res end
+end
 local function hookPath(path, fn)
   if hooked[path] then return end
   local ok, err = pcall(RegisterHook, path, fn)
@@ -3100,16 +3151,21 @@ LoopAsync(2000, function()
   if isValidObj(player) and UI.mapSince and os.time() - UI.mapSince >= (C.hookDelayAfterMapChange or 5) and not tostring(UI.mapName):find("Transition") then
     ExecuteInGameThread(function()
       if hooksDone then return end
-      hooksDone = installHooks()
+      if C.scanHooks then
+        hooksDone = installHooks()
+      else
+        hooksDone = true   -- the hooks themselves are installed by exact path (tryLateHooks), once the map is stable
+        log("hooks: by exact path (C.hookPaths), no function scan")
+      end
       if hooksDone and C.debug and C.dumpClassesOnStart then pcall(classDump) end
     end)
   end
   return false
 end)
 
--- Some boss Blueprints (the Cryptic Train) only load with their mission, so they cannot be hooked at start-up.
--- After a map change the mod looks up those few functions by their exact name (cheap) every 2 seconds for
--- 2 minutes, and hooks them as soon as they exist. (No full function scan: that caused stutters.)
+-- Hooks by exact path (C.hookPaths + C.lateHooks): after a map change, once the map is stable, the functions are
+-- looked up by their exact name (cheap) every 2 seconds for 2 minutes and hooked as soon as they exist (boss
+-- classes such as the Cryptic Train only load with their mission). No full function scan (crashes, stutters).
 local scanMap, lateUntil, lateNext = nil, 0, 0
 -- Debug probe (C.debug): when one of C.probeClasses appears in a game, every function of it (and its Blueprint
 -- parents up to BP_Enemy) is listed and hooked; the first calls of each, with their arguments, and a call count per
@@ -3257,7 +3313,10 @@ end
 local function tryLateHooks()
   if not hooksDone then return true end
   local allDone = true
-  for path, ev in pairs(C.lateHooks or {}) do
+  local list = {}
+  for path, ev in pairs(C.hookPaths or {}) do list[path] = ev end
+  for path, ev in pairs(C.lateHooks or {}) do list[path] = ev end
+  for path, ev in pairs(list) do
     if not hooked[path] then
       local fnObj = safe(StaticFindObject, path)
       if isValidObj(fnObj) and C.events[ev] then
