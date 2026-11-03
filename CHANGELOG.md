@@ -4,8 +4,12 @@ All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see 
 
 ## 1.1.0 – 2026-11-03
 
-- Added: Cactus as a damage type (Damage types table). The mod now reads the game's own list of elements, so
-  elemental damage is recognised by the game's names.
+- Changed: the Damage types table splits Weapon into **Primary** and **Secondary** (plus "Other weapon" for melee and
+  the like), and splits **Spells** by element in indented rows, e.g. a cactus spell such as Pistolero under
+  Spells → Cactus. Fire, Acid and Elec stay as their own rows (burning, corrosion ...). Rows without damage are hidden
+  except Primary, Secondary, Spells, Fire, Acid and Elec. Games saved earlier keep their single Weapon row.
+- Added: the mod reads the game's own list of elements, so elemental damage (including Cactus) is recognised by the
+  game's names.
 - Fixed: kills per enemy type (the "(kills)" numbers in the Enemies table) were only counted for yourself; other
   players always showed (0). They are now counted for every player, whether you host or join: when an enemy's health
   reaches 0, the kill goes to the player who hit it last.

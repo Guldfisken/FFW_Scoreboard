@@ -67,7 +67,7 @@ local function defaults()
   C.eliteProps = { "isElite", "bIsElite", "elite" }                      -- isElite exists on BP_Enemy_C [VERIFIED]
 
   -- Damage types that are always listed (even with 0 damage). Others appear when they have damage.
-  C.alwaysShowTypes = { "Weapon", "Spells", "Fire", "Acid", "Elec", "Frost", "Voodoo", "Cactus" }
+  C.alwaysShowTypes = { "Primary", "Secondary", "Spells", "Fire", "Acid", "Elec" }
   -- Damage from an actor whose class name contains one of these (and that is owned by a player) counts as "Spells".
   -- Check the "damage feed item/element/causer/type" lines in scoreboard.log for the real class names.
   C.spellCauserPatterns = { "Spell", "Turret", "Decoy", "Totem" }
@@ -937,7 +937,7 @@ local function renderAt(view, fOverride, dry, maxH)
       end
       for c = 1, n do
         local color = st.num
-        if c == 1 then color = st.name
+        if c == 1 then color = r.sub and st.sub or st.name
         elseif r.colors and r.colors[c] then color = r.colors[c]
         elseif r.best and r.best[c] then color = st.best
         elseif sec.dimLast and c == n then color = st.sub end
@@ -1067,10 +1067,60 @@ local function fmtDuration(sec)
 end
 
 -- A dataset is { order = {names}, stats = { [name] = {kills, damage, bossDamage, eliteDamage, taken, revives, deaths, selfHeal, teamHeal, ff, shield, cat, ek, ed} } }
+-- Damage types split: "Weapon" -> Primary / Secondary / Other weapon (by the item that dealt it and the player's
+-- loadout), "Spells" -> extra rows "Spells|<element>" (by the game's element of each spell hit). Saved games keep the
+-- split result; games saved before 1.1.0 only have "Weapon" and "Spells".
+local function normItem(x) return (tostring(x or ""):lower():gsub("[^%w]", "")) end
+local function elementLabel(n)
+  local el = UI.elements and UI.elements[n]
+  if not el or not el.name or el.name == "" then return "Other" end
+  local lower = el.name:lower()
+  for _, e in ipairs(C.damageCategories or {}) do
+    if lower:find(tostring(e[2]):lower(), 1, true) then return e[1] end
+  end
+  return el.name
+end
+local function splitCat(s, lo)
+  local cat = s.cat or {}
+  if not s.wdw and not s.spe then return cat end
+  local out = {}
+  for k, v in pairs(cat) do out[k] = v end
+  if s.wdw and (out.Weapon or 0) > 0 then
+    local p, q = normItem(lo and lo.Primary), normItem(lo and lo.Secondary)
+    if p ~= "" or q ~= "" then
+      local pd, sd = 0, 0
+      for it, d in pairs(s.wdw) do
+        local ni = normItem(it)
+        if p ~= "" and ni == p then pd = pd + d elseif q ~= "" and ni == q then sd = sd + d end
+      end
+      local other = out.Weapon - pd - sd
+      out.Weapon = nil
+      if pd > 0 then out.Primary = pd end
+      if sd > 0 then out.Secondary = sd end
+      if other >= 0.5 then out["Other weapon"] = other end
+    end
+  end
+  local subs, named = {}, false
+  for n, d in pairs(s.spe or {}) do
+    local l = elementLabel(n)
+    if l ~= "Other" then named = true end
+    subs[l] = (subs[l] or 0) + d
+  end
+  if named then   -- (without the game's element list every spell would be "Other": then no split is shown)
+    for l, d in pairs(subs) do out["Spells|" .. l] = (out["Spells|" .. l] or 0) + d end
+  end
+  return out
+end
+UI.splitCat = splitCat
+
 local function datasetOfSession(sess)
   local ds = { order = {}, stats = {}, loadouts = sess and sess.loadouts or {} }
   if sess then
-    for _, name in ipairs(sess.order) do ds.order[#ds.order + 1] = name; ds.stats[name] = sess.players[name] end
+    for _, name in ipairs(sess.order) do
+      local s = sess.players[name]
+      ds.order[#ds.order + 1] = name
+      ds.stats[name] = setmetatable({ cat = splitCat(s, (sess.loadouts or {})[name]) }, { __index = s })
+    end
   end
   return ds
 end
@@ -1167,9 +1217,26 @@ local function buildSections(ds)
   -- 2) damage types: type per row, players across
   local order, seen = {}, {}
   local function addLabel(l) if not seen[l] then seen[l] = true; order[#order + 1] = l end end
-  for _, l in ipairs(C.alwaysShowTypes or {}) do addLabel(l) end
   local totals = {}
   for _, n in ipairs(names) do for l, v in pairs(S(n).cat or {}) do totals[l] = (totals[l] or 0) + v end end
+  -- games saved before 1.1.0 have one "Weapon" row instead of Primary / Secondary
+  local split = (totals.Weapon or 0) == 0
+  local always = {}
+  for _, l in ipairs(C.alwaysShowTypes or {}) do
+    if l == "Weapon" or l == "Primary" or l == "Secondary" then
+      if split then always.Primary = true; always.Secondary = true else always.Weapon = true end
+    else
+      always[l] = true
+    end
+  end
+  local function want(l) return always[l] or (totals[l] or 0) > 0 end
+  -- weapons, then spells with their split by element, then the element effects (fire, acid, elec ...), then the rest
+  for _, l in ipairs({ "Weapon", "Primary", "Secondary", "Other weapon", "Spells" }) do if want(l) then addLabel(l) end end
+  local subs = {}
+  for l, v in pairs(totals) do if v > 0 and l:find("^Spells|") then subs[#subs + 1] = l end end
+  table.sort(subs, function(a, b) return totals[a] > totals[b] end)
+  for _, l in ipairs(subs) do addLabel(l) end
+  for _, l in ipairs(C.alwaysShowTypes or {}) do if want(l) and l ~= "Weapon" then addLabel(l) end end
   for _, e in ipairs(C.damageCategories or {}) do if (totals[e[1]] or 0) > 0 then addLabel(e[1]) end end
   if (totals.Other or 0) > 0 then addLabel("Other") end
   local extra = {}
@@ -1179,14 +1246,15 @@ local function buildSections(ds)
 
   local ty = { title = "Damage types", heads = playerHeads("Damage type"), rows = {}, dimLast = true }
   for ri, l in ipairs(order) do
-    local cells, v, sum = { l }, {}, 0
+    local subName = l:match("^Spells|(.+)$")   -- spell damage of one element: shown indented under Spells
+    local cells, v, sum = { subName and ("     " .. subName) or l }, {}, 0
     for ci, n in ipairs(names) do
       local d = (S(n).cat or {})[l] or 0
       cells[#cells + 1] = d > 0 and commas(d) or "-"
       v[ci] = d; sum = sum + d
     end
     cells[#cells + 1] = sum > 0 and commas(sum) or "-"
-    ty.rows[ri] = { cells = cells }
+    ty.rows[ri] = { cells = cells, sub = subName ~= nil }
     -- best player for this row (columns 2..n+1)
     local shifted = {}
     for ci, d in pairs(v) do shifted[ci] = d end
@@ -1463,6 +1531,12 @@ local function endSession(reason)
         end
         log("damage by item for " .. name .. ": " .. table.concat(parts, "  "))
       end
+    end
+  end
+  if Session then
+    for name, s in pairs(Session.players) do
+      s.cat = splitCat(s, (Session.loadouts or {})[name])
+      s.wdw, s.spe = nil, nil
     end
   end
   if Session and sessionHasData(Session) and not isLobby(Session.map) then
@@ -1763,6 +1837,20 @@ handlers.feed = function(def, selfObj, nums, objs, bools, path, args)
     if not loggedTypes[ek] then loggedTypes[ek] = true; log("damage feed item/element/causer/type: " .. ek) end
   end
   recordCat(who, cat, amount)
+  do
+    -- for the Damage types table: weapon damage per item (-> Primary / Secondary / Other weapon) and spell damage
+    -- per element (-> Spells split by element)
+    local st = statsFor(who)
+    if cat == "Weapon" then
+      st.wdw = st.wdw or {}
+      local k = item or "?"
+      st.wdw[k] = (st.wdw[k] or 0) + amount
+    elseif cat == "Spells" then
+      st.spe = st.spe or {}
+      local k = elem or -1
+      st.spe[k] = (st.spe[k] or 0) + amount
+    end
+  end
   if item and item ~= "" then
     local s = statsFor(who)
     s.wd = s.wd or {}
