@@ -158,6 +158,14 @@ local function defaults()
     -- (Weakspot / Missed hooks were removed: that data is not broadcast to every player - see README.)
     -- Damage taken. F_ServerDamages (self = player, p1 = amount) runs on the host; F_PlayerReceiveDamagesFeedback
     -- (self = player, p2 = enemy, p3 = amount) runs on the hit player's machine (so it also works when you joined).
+    -- Player health (BP_PlayerState.playerHeal) is sent to every player; OnRep_playerHeal runs on every machine when
+    -- it changes. Every drop counts as damage taken, so Taken works the same for everyone, host or client.
+    hp = {
+      names  = { "OnRep_playerHeal" },
+      owner  = "/Game/Player/BP_PlayerState%.BP_PlayerState_C:",
+      amount = "none",
+    },
+    -- (fallback, and for friendly fire) damage events: these only run on the host and on the hit player's machine
     taken = {
       names  = { "F_ServerDamages", "F_PlayerReceiveDamagesFeedback" },
       owner  = "/Game/Player/BP_Player%.BP_Player_C:",
@@ -1120,7 +1128,8 @@ local function datasetOfSession(sess)
     for _, name in ipairs(sess.order) do
       local s = sess.players[name]
       ds.order[#ds.order + 1] = name
-      ds.stats[name] = setmetatable({ cat = splitCat(s, (sess.loadouts or {})[name]) }, { __index = s })
+      ds.stats[name] = setmetatable({ cat = splitCat(s, (sess.loadouts or {})[name]),
+        taken = Cache.hpSeen and s.taken or (s.takenEv or 0) }, { __index = s })
     end
   end
   return ds
@@ -1536,6 +1545,11 @@ local function endSession(reason)
   end
   if Session then
     for name, s in pairs(Session.players) do
+      if (s.taken or 0) > 0 or (s.takenEv or 0) > 0 then
+        log(string.format("taken check %s: health lost = %.0f, damage events = %.0f%s", name, s.taken or 0, s.takenEv or 0,
+          Cache.hpSeen and "" or " (no health updates seen: using the damage events)"))
+      end
+      if not Cache.hpSeen then s.taken = s.takenEv or 0 end
       s.cat = splitCat(s, (Session.loadouts or {})[name])
       s.wdw, s.spe = nil, nil
     end
@@ -1648,6 +1662,7 @@ ResetHitCaches = function()
   enemyCache, causerCache, lastHit, pendingKills = {}, {}, {}, {}
   Cache.enemyN, Cache.causerN, Cache.lastHitN = 0, 0, 0
   Cache.trainServerSeen = false   -- this machine runs the train carriages' F_ServerDamages (= host)
+  Cache.hpSeen, Cache.hpLast = false, {}
 end
 
 local function enemyInfo(enemy)
@@ -1973,7 +1988,7 @@ handlers.taken = function(def, selfObj, nums, objs, bools, path)
   local name = playerName(victim)
   if not takenPath[name] then takenPath[name] = path; log("damage taken of " .. name .. " via " .. tostring(path):match("([^:]+)$")) end
   if takenPath[name] ~= path then return end
-  record(name, "taken", amount)
+  addMisc(name, "takenEv", amount)   -- (Taken itself comes from health drops, see handlers.hp)
   -- friendly fire: the damage came from another player (directly, or from something a player owns)
   local players2, others = findActors(selfObj, objs)
   local attacker = players2[2]
@@ -1991,6 +2006,20 @@ handlers.taken = function(def, selfObj, nums, objs, bools, path)
       if ffLogged <= 20 then log(string.format("friendly fire: %s hit %s for %.1f", an, name, amount)) end
     end
   end
+end
+
+-- A player's health changed (on every machine): every drop is damage taken by that player.
+handlers.hp = function(def, selfObj)
+  local ps = selfObj
+  if not isValidObj(ps) then return end
+  local h = tonumber(unwrap(safe(function() return ps.playerHeal end)))
+  if not h then return end
+  local key = addrOf(ps) or fullName(ps)
+  Cache.hpLast = Cache.hpLast or {}
+  local last = Cache.hpLast[key]
+  Cache.hpLast[key] = h
+  if not Cache.hpSeen then Cache.hpSeen = true; log("damage taken: from player health (OnRep_playerHeal), for every player") end
+  if last and h < last - 0.01 then record(playerName(ps), "taken", last - h) end
 end
 
 handlers.death = function(def, selfObj, nums, objs)
@@ -2107,7 +2136,7 @@ end
 -- hook one function and send its calls to the handlers of the given events
 local hookEvents
 do
-local RAW_EVENTS = { feed = true, feedsec = true, feedsrv = true, health = true }   -- handlers that only use `args` (no generic argument sorting)
+local RAW_EVENTS = { feed = true, feedsec = true, feedsrv = true, health = true, hp = true }   -- handlers that only use `args` (no generic argument sorting)
 local EMPTY = setmetatable({}, { __newindex = function() end })
 hookEvents = function(path, evs)
   local sn = shortName(path)

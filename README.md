@@ -71,6 +71,8 @@ The mod only uses information the game sends to **every** player, so the board i
   - **Fire, Acid, Elec**: damage the game reports under the element itself, such as burning and corrosion ticks.
     These are not linked to the weapon that applied them (the game does not say which one did).
 - **Shield** is the sum of every increase of a player's shield.
+- **Damage taken** is the health each player lost (every drop of their health, which the game sends to every player).
+  Damage absorbed by a shield is not included.
 
 ## Limitations
 
@@ -79,7 +81,7 @@ Most numbers are the same for everyone in the game. These are not:
 - **Cryptic Train boss: teammates' damage is only tracked when you host.** The train's carriages only report hits
   to the player who fired and to the host. When you join someone else's game, you see your own train damage, and
   your teammates show 0 boss damage for the train.
-- **Damage taken and Friendly fire**: as host you see everyone's; when you join you mainly see your own.
+- **Friendly fire**: as host you see everyone's; when you join you mainly see your own.
 - **Weakspot hits and missed shots are not tracked.** They are not part of what the server sends to everyone, so
   they could not be shown consistently.
 - **Weapon jokers are shown for yourself only.** They are stored in each player's own save, not synced.

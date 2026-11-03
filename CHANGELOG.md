@@ -10,6 +10,9 @@ All notable changes to FFW Scoreboard. Versions follow `MAJOR.MINOR.PATCH` (see 
   except Primary, Secondary, Spells, Fire, Acid and Elec. Games saved earlier keep their single Weapon row.
 - Added: the mod reads the game's own list of elements, so elemental damage (including Cactus) is recognised by the
   game's names.
+- Fixed: Damage taken was only shown for yourself when you joined someone else's game (teammates showed 0). It now
+  counts the health each player loses, which the game sends to every player, so it works the same for host and
+  clients. Damage absorbed by a shield is not included.
 - Fixed: kills per enemy type (the "(kills)" numbers in the Enemies table) were only counted for yourself; other
   players always showed (0). They are now counted for every player, whether you host or join: when an enemy's health
   reaches 0, the kill goes to the player who hit it last.
